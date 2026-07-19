@@ -111,4 +111,57 @@ public class TranslationJob {
     public String getErrorMessage() {
         return errorMessage;
     }
+
+    public void startProcessing() {
+        if (this.status != TranslationStatus.PENDING) {
+            throw new IllegalStateException(
+              "Начать обработку можно только для задания со статусом PENDING"
+            );
+        }
+
+        this.status = TranslationStatus.PROCESSING;
+    }
+
+    public void complete(String resultFileKey) {
+        if (this.status != TranslationStatus.PROCESSING) {
+            throw new IllegalStateException(
+              "Завершить можно только задание со статусом PROCESSING"
+            );
+        }
+
+        if (resultFileKey == null || resultFileKey.isBlank()) {
+            throw new IllegalArgumentException(
+              "Ключ результирующего файла не должен быть пустым"
+            );
+        }
+
+        if (resultFileKey.length() > 1024) {
+            throw new IllegalArgumentException(
+              "Ключ результирующуго файла не должен превышать 1024 символа"
+            );
+        }
+
+        this.resultFileKey = resultFileKey;
+        this.errorMessage = null;
+        this.status = TranslationStatus.DONE;
+    }
+
+    public void fail(String errorMessage) {
+        if (this.status != TranslationStatus.PENDING
+                && this.status != TranslationStatus.PROCESSING) {
+            throw new IllegalStateException(
+              "Ошибка допустима только для задания со статусом PENDING или PROCESSING"
+            );
+        }
+
+        if (errorMessage == null || errorMessage.isBlank()) {
+            throw new IllegalArgumentException(
+              "Сообщение об ошибке не должно быть пустым"
+            );
+        }
+
+        this.resultFileKey = null;
+        this.errorMessage = errorMessage.strip();
+        this.status = TranslationStatus.FAILED;
+    }
 }
