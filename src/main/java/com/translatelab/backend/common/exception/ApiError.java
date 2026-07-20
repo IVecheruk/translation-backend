@@ -9,6 +9,6 @@ public record ApiError(
         int status, // HTTP - код
         String message, // Понятное описание
         String path, // Адрес запроса
-        Map<String, String> fieldErrors // Ошибки отдельный полей DTO
+        Map<String, String> fieldErrors // Ошибки отдельных полей DTO
 ) {
 }
