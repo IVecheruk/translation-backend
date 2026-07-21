@@ -15,7 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -239,5 +242,40 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.fieldErrors.password").isNotEmpty());
 
         verifyNoInteractions(loginService);
+    }
+
+    @Test
+    void shouldReturnUnauthorizedWhenAccessTokenIsMissing() throws Exception {
+        mockMvc.perform(get("/api/documents/history"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message")
+                        .value("Требуется аутентификация"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/documents/history"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+    }
+
+    @Test
+    void shouldReturnUnauthorizedWhenAccessTokenIsInvalid() throws Exception {
+        given(jwtDecoder.decode("invalid-token"))
+                .willThrow(new BadJwtException("Invalid token"));
+
+        mockMvc.perform(get("/api/documents/history")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer invalid-token"
+                        ))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message")
+                        .value("Требуется аутентификация"))
+                .andExpect(jsonPath("$.path")
+                        .value("/api/documents/history"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+
+        verify(jwtDecoder).decode("invalid-token");
     }
 }
