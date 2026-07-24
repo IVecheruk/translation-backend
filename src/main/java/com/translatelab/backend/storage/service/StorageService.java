@@ -68,9 +68,8 @@ public class StorageService {
             );
         } catch (Exception exception) {
             throw new StorageException(
-                    "Не удалось удалить файл из MinIO:"
-                    + objectKey,
-                    exception
+                    "Не удалось удалить файл из MinIO: "
+                            + objectKey, exception
             );
         }
     }
@@ -80,11 +79,7 @@ public class StorageService {
             InputStream inputStream,
             long size
     ) {
-        if (objectKey == null || objectKey.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Ключ объекта не должен быть пустым"
-            );
-        }
+        validateObjectKey(objectKey);
 
         Objects.requireNonNull(
                 inputStream,
