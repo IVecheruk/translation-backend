@@ -4,6 +4,7 @@ import com.translatelab.backend.config.StorageProperties;
 import com.translatelab.backend.storage.exception.StorageException;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -55,6 +56,25 @@ public class StorageService {
         }
     }
 
+    public void delete(String objectKey) {
+        validateObjectKey(objectKey);
+
+        try {
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(storageProperties.bucket())
+                            .object(objectKey)
+                            .build()
+            );
+        } catch (Exception exception) {
+            throw new StorageException(
+                    "Не удалось удалить файл из MinIO:"
+                    + objectKey,
+                    exception
+            );
+        }
+    }
+
     private void validateUploadArguments(
             String objectKey,
             InputStream inputStream,
@@ -74,6 +94,14 @@ public class StorageService {
         if (size < 0) {
             throw new IllegalArgumentException(
                     "Размер файла не должен быть отрицательным"
+            );
+        }
+    }
+
+    private void validateObjectKey(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Ключ объекта не должен быть пустым"
             );
         }
     }
