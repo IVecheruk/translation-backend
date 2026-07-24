@@ -2,6 +2,7 @@ package com.translatelab.backend.common.exception;
 
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
+import com.translatelab.backend.translation.exception.UnsupportedFileFormatException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -74,6 +75,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.UNAUTHORIZED,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(UnsupportedFileFormatException.class)
+    public ResponseEntity<ApiError> handleUnsupportedFileFormat(
+            UnsupportedFileFormatException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
