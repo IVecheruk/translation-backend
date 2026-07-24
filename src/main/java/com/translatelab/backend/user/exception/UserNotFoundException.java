@@ -1,4 +1,4 @@
-package com.translatelab.backend.translation.exception;
+package com.translatelab.backend.user.exception;
 
 public class UserNotFoundException extends RuntimeException {
     public UserNotFoundException() {
