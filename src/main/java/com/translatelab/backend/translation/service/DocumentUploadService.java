@@ -1,0 +1,236 @@
+package com.translatelab.backend.translation.service;
+
+import com.translatelab.backend.messaging.dto.TranslationTaskMessage;
+import com.translatelab.backend.messaging.exception.MessagePublishingException;
+import com.translatelab.backend.messaging.publisher.TranslationTaskPublisher;
+import com.translatelab.backend.storage.service.StorageKeyGenerator;
+import com.translatelab.backend.storage.service.StorageService;
+import com.translatelab.backend.translation.dto.DocumentUploadResponse;
+import com.translatelab.backend.translation.entity.FileFormat;
+import com.translatelab.backend.translation.entity.TranslationJob;
+import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
+import com.translatelab.backend.translation.repository.TranslationJobRepository;
+import com.translatelab.backend.user.entity.User;
+import com.translatelab.backend.user.exception.UserNotFoundException;
+import com.translatelab.backend.user.repository.UserRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
+@Service
+public class DocumentUploadService {
+
+    private static final Pattern LANGUAGE_CODE_PATTERN =
+            Pattern.compile("^[a-z]{2,3}$");
+
+    private final UserRepository userRepository;
+    private final TranslationJobRepository translationJobRepository;
+    private final FileFormatResolver fileFormatResolver;
+    private final StorageKeyGenerator storageKeyGenerator;
+    private final StorageService storageService;
+    private final TranslationTaskPublisher translationTaskPublisher;
+
+    public DocumentUploadService(
+            UserRepository userRepository,
+            TranslationJobRepository translationJobRepository,
+            FileFormatResolver fileFormatResolver,
+            StorageKeyGenerator storageKeyGenerator,
+            StorageService storageService,
+            TranslationTaskPublisher translationTaskPublisher
+    ) {
+        this.userRepository = userRepository;
+        this.translationJobRepository = translationJobRepository;
+        this.fileFormatResolver = fileFormatResolver;
+        this.storageKeyGenerator = storageKeyGenerator;
+        this.storageService = storageService;
+        this.translationTaskPublisher = translationTaskPublisher;
+    }
+
+    public DocumentUploadResponse upload(
+            UUID userId,
+            MultipartFile file,
+            String sourceLang,
+            String targetLang
+    ) {
+        Objects.requireNonNull(
+                userId,
+                "Идентификатор пользователя не должен быть null"
+        );
+
+        validateFile(file);
+
+        String normalizedSourceLang = normalizeLanguage(
+                sourceLang,
+                "исходного"
+        );
+
+        String normalizedTargetLang = normalizeLanguage(
+                targetLang,
+                "целевого"
+        );
+
+        if (normalizedSourceLang.equals(normalizedTargetLang)) {
+            throw new InvalidDocumentUploadException(
+                    "Исходный и целевой языки должны различаться"
+            );
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(UserNotFoundException::new);
+
+        FileFormat fileFormat = fileFormatResolver.resolve(
+                file.getOriginalFilename()
+        );
+
+        String objectKey = storageKeyGenerator.generateSourceFileKey(
+                userId,
+                fileFormat
+        );
+
+        uploadFile(file, objectKey);
+
+        TranslationJob savedJob = saveJob(
+                user,
+                objectKey,
+                normalizedSourceLang,
+                normalizedTargetLang,
+                fileFormat
+        );
+
+        TranslationTaskMessage message = new TranslationTaskMessage(
+                savedJob.getId(),
+                savedJob.getSourceFileKey(),
+                savedJob.getSourceLang(),
+                savedJob.getTargetLang(),
+                savedJob.getFileFormat()
+        );
+
+        try {
+            translationTaskPublisher.publish(message);
+        } catch (MessagePublishingException exception) {
+            markJobAsFailed(savedJob, exception);
+            throw exception;
+        }
+
+        return new DocumentUploadResponse(savedJob.getId());
+    }
+
+    private void validateFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new InvalidDocumentUploadException(
+                    "Файл не должен быть пустым"
+            );
+        }
+    }
+
+    private String normalizeLanguage(
+            String language,
+            String languageType
+    ) {
+        if (language == null || language.isBlank()) {
+            throw new InvalidDocumentUploadException(
+                    "Код " + languageType
+                            + " языка не должен быть пустым"
+            );
+        }
+
+        String normalizedLanguage = language
+                .strip()
+                .toLowerCase(Locale.ROOT);
+
+        if (!LANGUAGE_CODE_PATTERN
+                .matcher(normalizedLanguage)
+                .matches()) {
+            throw new InvalidDocumentUploadException(
+                    "Код " + languageType
+                            + " языка должен содержать "
+                            + "2 или 3 латинские буквы"
+            );
+        }
+
+        return normalizedLanguage;
+    }
+
+    private void uploadFile(
+            MultipartFile file,
+            String objectKey
+    ) {
+        boolean uploadCompleted = false;
+
+        try (InputStream inputStream = file.getInputStream()) {
+            storageService.upload(
+                    objectKey,
+                    inputStream,
+                    file.getSize(),
+                    file.getContentType()
+            );
+
+            uploadCompleted = true;
+        } catch (IOException exception) {
+            InvalidDocumentUploadException uploadException =
+                    new InvalidDocumentUploadException(
+                            "Не удалось прочитать загруженный файл"
+                    );
+
+            uploadException.addSuppressed(exception);
+
+            if (uploadCompleted) {
+                deleteUploadedFile(objectKey, uploadException);
+            }
+
+            throw uploadException;
+        }
+    }
+
+    private TranslationJob saveJob(
+            User user,
+            String objectKey,
+            String sourceLang,
+            String targetLang,
+            FileFormat fileFormat
+    ) {
+        try {
+            TranslationJob job = new TranslationJob(
+                    user,
+                    objectKey,
+                    sourceLang,
+                    targetLang,
+                    fileFormat
+            );
+
+            return translationJobRepository.save(job);
+        } catch (RuntimeException exception) {
+            deleteUploadedFile(objectKey, exception);
+            throw exception;
+        }
+    }
+
+    private void deleteUploadedFile(
+            String objectKey,
+            RuntimeException originalException
+    ) {
+        try {
+            storageService.delete(objectKey);
+        } catch (RuntimeException deleteException) {
+            originalException.addSuppressed(deleteException);
+        }
+    }
+
+    private void markJobAsFailed(
+            TranslationJob job,
+            MessagePublishingException originalException
+    ) {
+        try {
+            job.fail(originalException.getMessage());
+            translationJobRepository.save(job);
+        } catch (RuntimeException updateException) {
+            originalException.addSuppressed(updateException);
+        }
+    }
+}
