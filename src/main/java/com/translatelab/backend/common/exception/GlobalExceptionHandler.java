@@ -2,6 +2,8 @@ package com.translatelab.backend.common.exception;
 
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
+import com.translatelab.backend.messaging.exception.MessagePublishingException;
+import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
 import com.translatelab.backend.translation.exception.UnsupportedFileFormatException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
@@ -12,6 +14,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -19,6 +23,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<ApiError> handleEmailAlreadyExists(
@@ -117,6 +123,28 @@ public class GlobalExceptionHandler {
         return buildResponse(
                 HttpStatus.NOT_FOUND,
                 exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler({
+            StorageException.class,
+            MessagePublishingException.class
+    })
+    public ResponseEntity<ApiError> handleServiceUnavailable(
+            RuntimeException exception,
+            HttpServletRequest request
+    ) {
+        LOGGER.error(
+                "Ошибка инфраструктуры при обработке запроса {}",
+                request.getRequestURI(),
+                exception
+        );
+
+        return buildResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Сервис временно недоступен. Повторите попытку позже",
                 request.getRequestURI(),
                 Map.of()
         );
