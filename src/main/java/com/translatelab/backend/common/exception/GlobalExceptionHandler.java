@@ -5,6 +5,7 @@ import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
+import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
 import com.translatelab.backend.translation.exception.UnsupportedFileFormatException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -145,6 +146,19 @@ public class GlobalExceptionHandler {
         return buildResponse(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "Сервис временно недоступен. Повторите попытку позже",
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(TranslationJobNotFoundException.class)
+    public ResponseEntity<ApiError> handleTranslationJobNotFound(
+            TranslationJobNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
         );
