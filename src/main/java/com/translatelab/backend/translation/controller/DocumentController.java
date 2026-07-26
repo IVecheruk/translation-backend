@@ -1,9 +1,11 @@
 package com.translatelab.backend.translation.controller;
 
 import com.translatelab.backend.translation.dto.DocumentDownloadResult;
+import com.translatelab.backend.translation.dto.DocumentHistoryResponse;
 import com.translatelab.backend.translation.dto.DocumentUploadResponse;
 import com.translatelab.backend.translation.dto.DocumentStatusResponse;
 import com.translatelab.backend.translation.service.DocumentDownloadService;
+import com.translatelab.backend.translation.service.DocumentHistoryService;
 import com.translatelab.backend.translation.service.DocumentStatusService;
 import com.translatelab.backend.translation.service.DocumentUploadService;
 import org.springframework.core.io.InputStreamResource;
@@ -29,15 +31,18 @@ public class DocumentController {
     private final DocumentUploadService documentUploadService;
     private final DocumentStatusService documentStatusService;
     private final DocumentDownloadService documentDownloadService;
+    private final DocumentHistoryService documentHistoryService;
 
     public DocumentController(
             DocumentUploadService documentUploadService,
             DocumentStatusService documentStatusService,
-            DocumentDownloadService documentDownloadService
+            DocumentDownloadService documentDownloadService,
+            DocumentHistoryService documentHistoryService
     ) {
         this.documentUploadService = documentUploadService;
         this.documentStatusService = documentStatusService;
         this.documentDownloadService = documentDownloadService;
+        this.documentHistoryService = documentHistoryService;
     }
 
     @PostMapping(
@@ -96,5 +101,26 @@ public class DocumentController {
                         contentDisposition.toString()
                 )
                 .body(resource);
+    }
+
+    @GetMapping("/history")
+    public DocumentHistoryResponse getHistory(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(
+                    name = "page",
+                    defaultValue = "0"
+            ) int page,
+            @RequestParam(
+                    name = "size",
+                    defaultValue = "20"
+            ) int size
+    )  {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        return documentHistoryService.getHistory(
+                userId,
+                page,
+                size
+        );
     }
 }
