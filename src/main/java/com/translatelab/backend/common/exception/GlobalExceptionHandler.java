@@ -4,10 +4,7 @@ import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.storage.exception.StorageException;
-import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
-import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
-import com.translatelab.backend.translation.exception.TranslationResultNotReadyException;
-import com.translatelab.backend.translation.exception.UnsupportedFileFormatException;
+import com.translatelab.backend.translation.exception.*;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -172,6 +169,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.CONFLICT,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(InvalidPaginationException.class)
+    public ResponseEntity<ApiError> handleInvalidPaginationException(
+            InvalidPaginationException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
