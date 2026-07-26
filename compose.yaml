@@ -1,4 +1,67 @@
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: translation-backend:local
+    container_name: translation-backend
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-1h}
+
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-translation-documents}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-translation}
+
+      RABBITMQ_TRANSLATION_EXCHANGE: ${RABBITMQ_TRANSLATION_EXCHANGE:-translation.exchange}
+      RABBITMQ_TRANSLATION_QUEUE: ${RABBITMQ_TRANSLATION_QUEUE:-translation.tasks}
+      RABBITMQ_TRANSLATION_ROUTING_KEY: ${RABBITMQ_TRANSLATION_ROUTING_KEY:-translation.task}
+      RABBITMQ_TRANSLATION_STATUS_QUEUE: ${RABBITMQ_TRANSLATION_STATUS_QUEUE:-translation.status}
+      RABBITMQ_TRANSLATION_STATUS_ROUTING_KEY: ${RABBITMQ_TRANSLATION_STATUS_ROUTING_KEY:-translation.status}
+
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "--output",
+          "/dev/null",
+          "http://localhost:8080/actuator/health"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
   postgres:
     image: postgres:17-alpine
     container_name: translation-postgres
