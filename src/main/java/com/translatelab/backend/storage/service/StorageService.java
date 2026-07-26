@@ -2,6 +2,7 @@ package com.translatelab.backend.storage.service;
 
 import com.translatelab.backend.config.StorageProperties;
 import com.translatelab.backend.storage.exception.StorageException;
+import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
@@ -107,5 +108,24 @@ public class StorageService {
         }
 
         return contentType;
+    }
+
+    public InputStream download(String objectKey) {
+        validateObjectKey(objectKey);
+
+        try {
+            return minioClient.getObject(
+                    GetObjectArgs.builder()
+                            .bucket(storageProperties.bucket())
+                            .object(objectKey)
+                            .build()
+            );
+        } catch (Exception exception) {
+            throw new StorageException(
+                    "Не удалось скачать файл из MinIO: "
+                    + objectKey,
+                    exception
+            );
+        }
     }
 }
