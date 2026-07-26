@@ -36,6 +36,9 @@ public class TranslationJob {
     @Enumerated(EnumType.STRING)
     private TranslationStatus status;
 
+    @Column(name = "progress", nullable = false)
+    private int progress;
+
     @Column(name = "file_format", nullable = false, length = 16)
     @Enumerated(EnumType.STRING)
     private FileFormat fileFormat;
@@ -65,6 +68,7 @@ public class TranslationJob {
         this.sourceLang = sourceLang;
         this.targetLang = targetLang;
         this.status = TranslationStatus.PENDING;
+        this.progress = 0;
         this.fileFormat = fileFormat;
     }
 
@@ -96,6 +100,10 @@ public class TranslationJob {
         return status;
     }
 
+    public int getProgress() {
+        return progress;
+    }
+
     public FileFormat getFileFormat() {
         return fileFormat;
     }
@@ -120,6 +128,7 @@ public class TranslationJob {
         }
 
         this.status = TranslationStatus.PROCESSING;
+        this.progress = 0;
     }
 
     public void complete(String resultFileKey) {
@@ -137,12 +146,13 @@ public class TranslationJob {
 
         if (resultFileKey.length() > 1024) {
             throw new IllegalArgumentException(
-              "Ключ результирующуго файла не должен превышать 1024 символа"
+              "Ключ результирующего файла не должен превышать 1024 символа"
             );
         }
 
         this.resultFileKey = resultFileKey;
         this.errorMessage = null;
+        this.progress = 100;
         this.status = TranslationStatus.DONE;
     }
 
@@ -163,5 +173,29 @@ public class TranslationJob {
         this.resultFileKey = null;
         this.errorMessage = errorMessage.strip();
         this.status = TranslationStatus.FAILED;
+    }
+
+    public void updateProgress(int progress) {
+        if (this.status != TranslationStatus.PROCESSING) {
+            throw new IllegalStateException(
+                    "Обновлять прогресс можно только для задания "
+                        + "со статусом PROCESSING"
+            );
+        }
+
+        if (progress < 0 || progress > 99) {
+            throw new IllegalArgumentException(
+                    "Прогресс обработки должен находиться "
+                    + "в диапазоне от 0 до 99"
+            );
+        }
+
+        if (progress < this.progress) {
+            throw new IllegalArgumentException(
+                    "Прогресс обработки не должен уменьшаться"
+            );
+        }
+
+        this.progress = progress;
     }
 }

@@ -3,6 +3,7 @@ package com.translatelab.backend.translation.entity;
 import com.translatelab.backend.user.entity.User;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -14,6 +15,7 @@ class TranslationJobTest {
         TranslationJob job = createJob();
 
         assertEquals(TranslationStatus.PENDING, job.getStatus());
+        assertEquals(0, job.getProgress());
         assertNull(job.getResultFileKey());
         assertNull(job.getErrorMessage());
     }
@@ -25,6 +27,7 @@ class TranslationJobTest {
         job.startProcessing();
 
         assertEquals(TranslationStatus.PROCESSING, job.getStatus());
+        assertEquals(0, job.getProgress());
     }
 
     @Test
@@ -45,6 +48,7 @@ class TranslationJobTest {
         job.complete("results/result.docx");
 
         assertEquals(TranslationStatus.DONE, job.getStatus());
+        assertEquals(100, job.getProgress());
         assertEquals("results/result.docx", job.getResultFileKey());
         assertNull(job.getErrorMessage());
     }
@@ -98,6 +102,7 @@ class TranslationJobTest {
         job.fail("  Ошибка загрузки файла  ");
 
         assertEquals(TranslationStatus.FAILED, job.getStatus());
+        assertEquals(0, job.getProgress());
         assertEquals("Ошибка загрузки файла", job.getErrorMessage());
         assertNull(job.getResultFileKey());
     }
@@ -106,12 +111,72 @@ class TranslationJobTest {
     void shouldFailProcessingJob() {
         TranslationJob job = createJob();
         job.startProcessing();
+        job.updateProgress(47);
 
         job.fail("Ошибка перевода");
 
         assertEquals(TranslationStatus.FAILED, job.getStatus());
+        assertEquals(47, job.getProgress());
         assertEquals("Ошибка перевода", job.getErrorMessage());
         assertNull(job.getResultFileKey());
+    }
+
+    @Test
+    void shouldIncreaseProgressWhileProcessing() {
+        TranslationJob job = createJob();
+        job.startProcessing();
+
+        job.updateProgress(25);
+        job.updateProgress(70);
+
+        assertEquals(70, job.getProgress());
+        assertEquals(TranslationStatus.PROCESSING, job.getStatus());
+    }
+
+    @Test
+    void shouldRejectProgressOutsideProcessingRange() {
+        TranslationJob job = createJob();
+        job.startProcessing();
+
+        assertAll(
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> job.updateProgress(-1)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> job.updateProgress(100)
+                )
+        );
+
+        assertEquals(0, job.getProgress());
+    }
+
+    @Test
+    void shouldRejectDecreasingProgress() {
+        TranslationJob job = createJob();
+        job.startProcessing();
+        job.updateProgress(60);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> job.updateProgress(59)
+        );
+
+        assertEquals(60, job.getProgress());
+    }
+
+    @Test
+    void shouldRejectProgressUpdateForPendingJob() {
+        TranslationJob job = createJob();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> job.updateProgress(10)
+        );
+
+        assertEquals(0, job.getProgress());
+        assertEquals(TranslationStatus.PENDING, job.getStatus());
     }
 
     @Test

@@ -2,7 +2,6 @@ package com.translatelab.backend.translation.service;
 
 import com.translatelab.backend.translation.dto.DocumentStatusResponse;
 import com.translatelab.backend.translation.entity.TranslationJob;
-import com.translatelab.backend.translation.entity.TranslationStatus;
 import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
 import com.translatelab.backend.translation.repository.TranslationJobRepository;
 import org.springframework.stereotype.Service;
@@ -41,21 +40,11 @@ public class DocumentStatusService {
                 .findByIdAndUser_Id(jobId, userId)
                 .orElseThrow(TranslationJobNotFoundException::new);
 
-        int progress = calculateProgress(job.getStatus());
-
         return new DocumentStatusResponse(
                 job.getId(),
                 job.getStatus(),
-                progress,
+                job.getProgress(),
                 job.getErrorMessage()
         );
-    }
-
-    private int calculateProgress(TranslationStatus status) {
-        return switch (status) {
-            case PENDING -> 0;
-            case PROCESSING -> 50;
-            case DONE, FAILED -> 100;
-        };
     }
 }

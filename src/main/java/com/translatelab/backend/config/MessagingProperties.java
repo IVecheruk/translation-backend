@@ -15,6 +15,12 @@ public record MessagingProperties(
         String queue,
 
         @NotBlank
-        String routingKey
+        String routingKey,
+
+        @NotBlank
+        String statusQueue,
+
+        @NotBlank
+        String statusRoutingKey
 ) {
 }

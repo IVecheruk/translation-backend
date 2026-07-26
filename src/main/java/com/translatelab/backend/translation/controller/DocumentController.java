@@ -1,12 +1,16 @@
 package com.translatelab.backend.translation.controller;
 
 import com.translatelab.backend.translation.dto.DocumentUploadResponse;
+import com.translatelab.backend.translation.dto.DocumentStatusResponse;
+import com.translatelab.backend.translation.service.DocumentStatusService;
 import com.translatelab.backend.translation.service.DocumentUploadService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -21,11 +25,14 @@ import java.util.UUID;
 public class DocumentController {
 
     private final DocumentUploadService documentUploadService;
+    private final DocumentStatusService documentStatusService;
 
     public DocumentController(
-            DocumentUploadService documentUploadService
+            DocumentUploadService documentUploadService,
+            DocumentStatusService documentStatusService
     ) {
         this.documentUploadService = documentUploadService;
+        this.documentStatusService = documentStatusService;
     }
 
     @PostMapping(
@@ -47,5 +54,15 @@ public class DocumentController {
                 sourceLang,
                 targetLang
         );
+    }
+
+    @GetMapping("/{jobId}/status")
+    public DocumentStatusResponse getStatus(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID jobId
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        return documentStatusService.getStatus(userId, jobId);
     }
 }
