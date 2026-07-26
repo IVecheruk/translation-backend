@@ -6,6 +6,7 @@ import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
 import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
+import com.translatelab.backend.translation.exception.TranslationResultNotReadyException;
 import com.translatelab.backend.translation.exception.UnsupportedFileFormatException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -158,6 +159,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.NOT_FOUND,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(TranslationResultNotReadyException.class)
+    public ResponseEntity<ApiError> handleTranslationResultNotReadyException(
+            TranslationResultNotReadyException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
