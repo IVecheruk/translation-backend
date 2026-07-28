@@ -5,6 +5,8 @@ import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.*;
+import com.translatelab.backend.user.exception.AvatarNotFoundException;
+import com.translatelab.backend.user.exception.InvalidAvatarException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -201,6 +204,48 @@ public class GlobalExceptionHandler {
                 Map.of(
                         exception.getName(),
                         "Некорректное значение"
+                )
+        );
+    }
+
+    @ExceptionHandler(InvalidAvatarException.class)
+    public ResponseEntity<ApiError> handleInvalidAvatar(
+            InvalidAvatarException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(AvatarNotFoundException.class)
+    public ResponseEntity<ApiError> handleAvatarNotFound(
+            AvatarNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiError> handleMissingServletRequestPart(
+            MissingServletRequestPartException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "Отсутствует обязательная часть запроса",
+                request.getRequestURI(),
+                Map.of(
+                        exception.getRequestPartName(),
+                        "Обязательная часть запроса отсутствует"
                 )
         );
     }
