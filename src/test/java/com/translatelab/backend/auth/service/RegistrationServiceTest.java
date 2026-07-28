@@ -4,6 +4,8 @@ import com.translatelab.backend.auth.dto.RegisterRequest;
 import com.translatelab.backend.auth.dto.RegisterResponse;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.user.entity.User;
+import com.translatelab.backend.user.entity.UserProfile;
+import com.translatelab.backend.user.repository.UserProfileRepository;
 import com.translatelab.backend.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,6 +19,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -34,11 +37,14 @@ class RegistrationServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private UserProfileRepository userProfileRepository;
+
     @InjectMocks
     private RegistrationService registrationService;
 
     @Test
-    void shouldNormalizeEmailHashPasswordAndReturnSavedUser() {
+    void shouldNormalizeEmailHashPasswordCreateProfileAndReturnSavedUser() {
         RegisterRequest request = new RegisterRequest(
                 "  User@Example.COM  ",
                 "password123"
@@ -66,6 +72,8 @@ class RegistrationServiceTest {
 
         ArgumentCaptor<User> userCaptor =
                 ArgumentCaptor.forClass(User.class);
+        ArgumentCaptor<UserProfile> profileCaptor =
+                ArgumentCaptor.forClass(UserProfile.class);
 
         verify(userRepository)
                 .existsByEmail("user@example.com");
@@ -73,8 +81,11 @@ class RegistrationServiceTest {
                 .encode("password123");
         verify(userRepository)
                 .save(userCaptor.capture());
+        verify(userProfileRepository)
+                .save(profileCaptor.capture());
 
         User userPassedToRepository = userCaptor.getValue();
+        UserProfile profilePassedToRepository = profileCaptor.getValue();
 
         assertEquals(
                 "user@example.com",
@@ -84,6 +95,7 @@ class RegistrationServiceTest {
                 "hashed-password",
                 userPassedToRepository.getPasswordHash()
         );
+        assertSame(savedUser, profilePassedToRepository.getUser());
 
         assertEquals(userId, response.id());
         assertEquals("user@example.com", response.email());
@@ -115,6 +127,7 @@ class RegistrationServiceTest {
         verify(userRepository, never())
                 .save(any(User.class));
         verifyNoInteractions(passwordEncoder);
+        verifyNoInteractions(userProfileRepository);
         verifyNoMoreInteractions(userRepository);
     }
 }

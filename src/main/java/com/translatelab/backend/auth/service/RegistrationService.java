@@ -4,6 +4,8 @@ import com.translatelab.backend.auth.dto.RegisterRequest;
 import com.translatelab.backend.auth.dto.RegisterResponse;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.user.entity.User;
+import com.translatelab.backend.user.entity.UserProfile;
+import com.translatelab.backend.user.repository.UserProfileRepository;
 import com.translatelab.backend.user.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,13 +18,16 @@ public class RegistrationService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserProfileRepository userProfileRepository;
 
     public RegistrationService(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            UserProfileRepository userProfileRepository
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.userProfileRepository = userProfileRepository;
     }
 
     @Transactional
@@ -39,6 +44,9 @@ public class RegistrationService {
 
         User user = new User(email, passwordHash);
         User savedUser = userRepository.save(user);
+
+        UserProfile profile = new UserProfile(savedUser);
+        userProfileRepository.save(profile);
 
         return new RegisterResponse(
                 savedUser.getId(),
