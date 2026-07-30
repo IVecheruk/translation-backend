@@ -13,7 +13,7 @@ import java.util.Objects;
 public class UsagePeriodCalculator {
 
     public UsagePeriod calculate(PeriodType periodType, Instant referenceTime) {
-        Objects.requireNonNull(periodType, "Тип перевода не должен быть null");
+        Objects.requireNonNull(periodType, "Тип периода не должен быть null");
         Objects.requireNonNull(referenceTime, "Опорный момент времени не должен быть null");
 
         return switch (periodType) {
