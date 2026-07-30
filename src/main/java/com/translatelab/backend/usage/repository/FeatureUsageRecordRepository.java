@@ -2,11 +2,14 @@ package com.translatelab.backend.usage.repository;
 
 import com.translatelab.backend.plan.entity.FeatureCode;
 import com.translatelab.backend.usage.entity.FeatureUsageRecord;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface FeatureUsageRecordRepository extends JpaRepository<FeatureUsageRecord, UUID> {
@@ -28,5 +31,15 @@ public interface FeatureUsageRecordRepository extends JpaRepository<FeatureUsage
             @Param("featureCode") FeatureCode featureCode,
             @Param("periodStart") Instant periodStart,
             @Param("periodEnd") Instant periodEnd
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT usage
+            FROM FeatureUsageRecord usage
+            WHERE usage.id = :reservationId
+            """)
+    Optional<FeatureUsageRecord> findByIdForUpdate(
+            @Param("reservationId") UUID reservationId
     );
 }
