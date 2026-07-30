@@ -4,9 +4,13 @@ import com.translatelab.backend.config.UsageProperties;
 import com.translatelab.backend.plan.dto.ResolvedEntitlement;
 import com.translatelab.backend.plan.entity.FeatureCode;
 import com.translatelab.backend.plan.service.EntitlementService;
+import com.translatelab.backend.translation.entity.TranslationJob;
+import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
+import com.translatelab.backend.translation.repository.TranslationJobRepository;
 import com.translatelab.backend.usage.dto.UsagePeriod;
 import com.translatelab.backend.usage.entity.FeatureUsageRecord;
 import com.translatelab.backend.usage.exception.UsageLimitExceededException;
+import com.translatelab.backend.usage.exception.UsageReservationNotFoundException;
 import com.translatelab.backend.usage.repository.FeatureUsageRecordRepository;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
@@ -28,6 +32,7 @@ public class UsageLimitService {
     private final UsagePeriodCalculator usagePeriodCalculator;
     private final UsageProperties usageProperties;
     private final Clock clock;
+    private final TranslationJobRepository translationJobRepository;
 
     public UsageLimitService(
             UserRepository userRepository,
@@ -35,7 +40,8 @@ public class UsageLimitService {
             FeatureUsageRecordRepository usageRecordRepository,
             UsagePeriodCalculator usagePeriodCalculator,
             UsageProperties usageProperties,
-            Clock clock
+            Clock clock,
+            TranslationJobRepository translationJobRepository
     ) {
         this.userRepository = userRepository;
         this.entitlementService = entitlementService;
@@ -43,6 +49,7 @@ public class UsageLimitService {
         this.usagePeriodCalculator = usagePeriodCalculator;
         this.usageProperties = usageProperties;
         this.clock = clock;
+        this.translationJobRepository = translationJobRepository;
     }
 
     @Transactional
@@ -110,6 +117,54 @@ public class UsageLimitService {
                 usageRecordRepository.save(reservation);
 
         return savedReservation.getId();
+    }
+
+    @Transactional
+    public void consume(
+            UUID reservationId,
+            UUID translationJobId
+    ) {
+        Objects.requireNonNull(
+                reservationId,
+                "Идентификатор резервации не должен быть null"
+        );
+
+        Objects.requireNonNull(
+                translationJobId,
+                "Идентификатор задания перевода не должен быть null"
+        );
+
+        FeatureUsageRecord reservation =
+                usageRecordRepository.findByIdForUpdate(reservationId)
+                        .orElseThrow(
+                                UsageReservationNotFoundException::new
+                        );
+
+        UUID userId = reservation.getUser().getId();
+
+        TranslationJob translationJob =
+                translationJobRepository.findByIdAndUser_Id(
+                        translationJobId,
+                        userId
+                ).orElseThrow(TranslationJobNotFoundException::new);
+
+        reservation.consume(translationJob);
+    }
+
+    @Transactional
+    public void release(UUID reservationId) {
+        Objects.requireNonNull(
+                reservationId,
+                "Идентификатор резервации не должен быть null"
+        );
+
+        FeatureUsageRecord reservation =
+                usageRecordRepository.findByIdForUpdate(reservationId)
+                        .orElseThrow(
+                                UsageReservationNotFoundException::new
+                        );
+
+        reservation.release();
     }
 
     private void checkAvailableLimit(

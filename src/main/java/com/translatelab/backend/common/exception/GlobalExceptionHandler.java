@@ -7,6 +7,7 @@ import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.*;
 import com.translatelab.backend.usage.exception.UsageLimitExceededException;
+import com.translatelab.backend.usage.exception.UsageReservationNotFoundException;
 import com.translatelab.backend.user.exception.AvatarNotFoundException;
 import com.translatelab.backend.user.exception.InvalidAvatarException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
@@ -272,6 +273,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.TOO_MANY_REQUESTS,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(UsageReservationNotFoundException.class)
+    public ResponseEntity<ApiError> handleUsageReservationNotFound(
+            UsageReservationNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
