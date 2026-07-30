@@ -1,7 +1,9 @@
 package com.translatelab.backend.user.controller;
 
+import com.translatelab.backend.config.OpenApiConfig;
 import com.translatelab.backend.user.dto.AvatarDownloadResult;
 import com.translatelab.backend.user.service.AvatarService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -22,6 +24,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/profile/avatar")
+@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class ProfileAvatarController {
 
     private final AvatarService avatarService;

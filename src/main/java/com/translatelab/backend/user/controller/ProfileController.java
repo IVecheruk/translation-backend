@@ -1,8 +1,10 @@
 package com.translatelab.backend.user.controller;
 
+import com.translatelab.backend.config.OpenApiConfig;
 import com.translatelab.backend.user.dto.ProfileResponse;
 import com.translatelab.backend.user.dto.UpdateProfileRequest;
 import com.translatelab.backend.user.service.ProfileService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -12,6 +14,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/profile")
+@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class ProfileController {
 
     private final ProfileService profileService;

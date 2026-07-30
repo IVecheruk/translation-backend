@@ -1,5 +1,6 @@
 package com.translatelab.backend.translation.controller;
 
+import com.translatelab.backend.config.OpenApiConfig;
 import com.translatelab.backend.translation.dto.DocumentDownloadResult;
 import com.translatelab.backend.translation.dto.DocumentHistoryResponse;
 import com.translatelab.backend.translation.dto.DocumentUploadResponse;
@@ -8,6 +9,7 @@ import com.translatelab.backend.translation.service.DocumentDownloadService;
 import com.translatelab.backend.translation.service.DocumentHistoryService;
 import com.translatelab.backend.translation.service.DocumentStatusService;
 import com.translatelab.backend.translation.service.DocumentUploadService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,6 +28,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/documents")
+@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class DocumentController {
 
     private final DocumentUploadService documentUploadService;
