@@ -15,11 +15,13 @@ import com.translatelab.backend.usage.repository.FeatureUsageRecordRepository;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import com.translatelab.backend.user.repository.UserRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -165,6 +167,27 @@ public class UsageLimitService {
                         );
 
         reservation.release();
+    }
+
+    @Transactional
+    public int releaseExpiredReservations(int batchSize) {
+        if (batchSize <= 0) {
+            throw new IllegalArgumentException(
+                    "Размер пакета должен быть положительным"
+            );
+        }
+
+        Instant now = clock.instant();
+
+        List<FeatureUsageRecord> expiredReservations =
+                usageRecordRepository.findExpiredReservationsForUpdate(
+                        now,
+                        PageRequest.of(0, batchSize)
+                );
+
+        expiredReservations.forEach(FeatureUsageRecord::release);
+
+        return expiredReservations.size();
     }
 
     private void checkAvailableLimit(
