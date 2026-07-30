@@ -6,6 +6,7 @@ import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.*;
+import com.translatelab.backend.usage.exception.UsageLimitExceededException;
 import com.translatelab.backend.user.exception.AvatarNotFoundException;
 import com.translatelab.backend.user.exception.InvalidAvatarException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
@@ -258,6 +259,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.FORBIDDEN,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(UsageLimitExceededException.class)
+    public ResponseEntity<ApiError> handleUsageLimitExceeded(
+            UsageLimitExceededException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.TOO_MANY_REQUESTS,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
