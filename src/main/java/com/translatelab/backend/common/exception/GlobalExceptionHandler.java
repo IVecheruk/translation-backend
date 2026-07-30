@@ -3,6 +3,7 @@ package com.translatelab.backend.common.exception;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
+import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.*;
 import com.translatelab.backend.user.exception.AvatarNotFoundException;
@@ -247,6 +248,19 @@ public class GlobalExceptionHandler {
                         exception.getRequestPartName(),
                         "Обязательная часть запроса отсутствует"
                 )
+        );
+    }
+
+    @ExceptionHandler(FeatureNotAvailableException.class)
+    public ResponseEntity<ApiError> handleFeatureNotAvailable(
+            FeatureNotAvailableException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.FORBIDDEN,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
         );
     }
 
