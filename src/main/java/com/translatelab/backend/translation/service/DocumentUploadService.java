@@ -10,11 +10,13 @@ import com.translatelab.backend.translation.entity.FileFormat;
 import com.translatelab.backend.translation.entity.TranslationJob;
 import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
 import com.translatelab.backend.translation.repository.TranslationJobRepository;
+import com.translatelab.backend.usage.service.UsageLimitService;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import com.translatelab.backend.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import com.translatelab.backend.plan.entity.FeatureCode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,6 +37,7 @@ public class DocumentUploadService {
     private final StorageKeyGenerator storageKeyGenerator;
     private final StorageService storageService;
     private final TranslationTaskPublisher translationTaskPublisher;
+    private final UsageLimitService usageLimitService;
 
     public DocumentUploadService(
             UserRepository userRepository,
@@ -42,7 +45,8 @@ public class DocumentUploadService {
             FileFormatResolver fileFormatResolver,
             StorageKeyGenerator storageKeyGenerator,
             StorageService storageService,
-            TranslationTaskPublisher translationTaskPublisher
+            TranslationTaskPublisher translationTaskPublisher,
+            UsageLimitService usageLimitService
     ) {
         this.userRepository = userRepository;
         this.translationJobRepository = translationJobRepository;
@@ -50,6 +54,7 @@ public class DocumentUploadService {
         this.storageKeyGenerator = storageKeyGenerator;
         this.storageService = storageService;
         this.translationTaskPublisher = translationTaskPublisher;
+        this.usageLimitService = usageLimitService;
     }
 
     public DocumentUploadResponse upload(
@@ -93,30 +98,53 @@ public class DocumentUploadService {
                 fileFormat
         );
 
-        uploadFile(file, objectKey);
-
-        TranslationJob savedJob = saveJob(
-                user,
-                objectKey,
-                normalizedSourceLang,
-                normalizedTargetLang,
-                fileFormat
+        UUID reservationId = usageLimitService.reserve(
+                userId,
+                FeatureCode.DOCUMENT_TRANSLATION,
+                1
         );
 
-        TranslationTaskMessage message = new TranslationTaskMessage(
-                savedJob.getId(),
-                savedJob.getSourceFileKey(),
-                savedJob.getSourceLang(),
-                savedJob.getTargetLang(),
-                savedJob.getFileFormat()
-        );
+        TranslationJob savedJob;
 
         try {
-            translationTaskPublisher.publish(message);
-        } catch (MessagePublishingException exception) {
-            markJobAsFailed(savedJob, exception);
+            uploadFile(file, objectKey);
+
+            savedJob = saveJob(
+                    user,
+                    objectKey,
+                    normalizedSourceLang,
+                    normalizedTargetLang,
+                    fileFormat
+            );
+
+            TranslationTaskMessage message =
+                    new TranslationTaskMessage(
+                            savedJob.getId(),
+                            savedJob.getSourceFileKey(),
+                            savedJob.getSourceLang(),
+                            savedJob.getTargetLang(),
+                            savedJob.getFileFormat()
+                    );
+
+            try {
+                translationTaskPublisher.publish(message);
+            } catch (MessagePublishingException exception) {
+                markJobAsFailed(savedJob, exception);
+                throw exception;
+            }
+        } catch (RuntimeException exception) {
+            releaseReservation(
+                    reservationId,
+                    exception
+            );
+
             throw exception;
         }
+
+        usageLimitService.consume(
+                reservationId,
+                savedJob.getId()
+        );
 
         return new DocumentUploadResponse(savedJob.getId());
     }
@@ -231,6 +259,17 @@ public class DocumentUploadService {
             translationJobRepository.save(job);
         } catch (RuntimeException updateException) {
             originalException.addSuppressed(updateException);
+        }
+    }
+
+    private void releaseReservation(
+            UUID reservationId,
+            RuntimeException originalException
+    ) {
+        try {
+            usageLimitService.release(reservationId);
+        } catch (RuntimeException releaseException) {
+            originalException.addSuppressed(releaseException);
         }
     }
 }
