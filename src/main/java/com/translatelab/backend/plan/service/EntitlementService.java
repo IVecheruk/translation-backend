@@ -7,9 +7,12 @@ import com.translatelab.backend.plan.entity.PlanEntitlementId;
 import com.translatelab.backend.plan.entity.SubscriptionPlan;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.plan.repository.PlanEntitlementRepository;
+import com.translatelab.backend.subscription.repository.UserSubscriptionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,13 +22,24 @@ public class EntitlementService {
     private static final String FREE_PLAN_CODE = "FREE";
 
     private final PlanEntitlementRepository planEntitlementRepository;
+    private final UserSubscriptionRepository userSubscriptionRepository;
+    private final Clock clock;
 
-    public EntitlementService(PlanEntitlementRepository planEntitlementRepository) {
+    public EntitlementService(
+            PlanEntitlementRepository planEntitlementRepository,
+            UserSubscriptionRepository userSubscriptionRepository,
+            Clock clock
+    ) {
         this.planEntitlementRepository = planEntitlementRepository;
+        this.userSubscriptionRepository = userSubscriptionRepository;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
-    public ResolvedEntitlement resolveEntitlement(UUID userId, FeatureCode featureCode) {
+    public ResolvedEntitlement resolveEntitlement(
+            UUID userId,
+            FeatureCode featureCode
+    ) {
         Objects.requireNonNull(
                 featureCode,
                 "Код функции не должен быть null"
@@ -33,8 +47,13 @@ public class EntitlementService {
 
         String planCode = resolvePlanCode(userId);
 
-        PlanEntitlementId entitlementId = new PlanEntitlementId(planCode, featureCode);
-        PlanEntitlement entitlement = planEntitlementRepository.findByIdAndPlan_ActiveTrue(entitlementId)
+        PlanEntitlementId entitlementId = new PlanEntitlementId(
+                planCode,
+                featureCode
+        );
+
+        PlanEntitlement entitlement = planEntitlementRepository
+                .findByIdAndPlan_ActiveTrue(entitlementId)
                 .orElseThrow(FeatureNotAvailableException::new);
 
         return toResolvedEntitlement(entitlement);
@@ -46,10 +65,17 @@ public class EntitlementService {
                 "Идентификатор пользователя не должен быть null"
         );
 
-        return FREE_PLAN_CODE;
+        Instant now = clock.instant();
+
+        return userSubscriptionRepository
+                .findEffectiveActiveByUserIdAt(userId, now)
+                .map(subscription -> subscription.getPlan().getCode())
+                .orElse(FREE_PLAN_CODE);
     }
 
-    private ResolvedEntitlement toResolvedEntitlement(PlanEntitlement entitlement) {
+    private ResolvedEntitlement toResolvedEntitlement(
+            PlanEntitlement entitlement
+    ) {
         SubscriptionPlan plan = entitlement.getPlan();
 
         return new ResolvedEntitlement(
