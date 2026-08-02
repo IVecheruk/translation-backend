@@ -24,7 +24,7 @@ public class ProcessedPaymentEvent {
     @Column(name = "external_event_id", nullable = false, updatable = false, length = 255)
     private String externalEventId;
 
-    @Column(name = "event_Type", nullable = false, updatable = false, length = 128)
+    @Column(name = "event_type", nullable = false, updatable = false, length = 128)
     private String eventType;
 
     @Column(name = "processed_at", nullable = false, updatable = false, insertable = false)
