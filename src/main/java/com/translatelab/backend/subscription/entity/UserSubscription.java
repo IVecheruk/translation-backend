@@ -158,6 +158,70 @@ public class UserSubscription {
         );
     }
 
+    public void scheduleCancellationAtPeriodEnd() {
+        ensureActive();
+        this.cancelAtPeriodEnd = true;
+    }
+
+    public void revokeCancellationAtPeriodEnd() {
+        ensureActive();
+        this.cancelAtPeriodEnd = false;
+    }
+
+    public void cancelImmediately() {
+        ensureNonTerminal();
+
+        this.status = SubscriptionStatus.CANCELED;
+        this.cancelAtPeriodEnd = false;
+    }
+
+    public void expire(Instant now) {
+        ensureNonTerminal();
+
+        if (now == null) {
+            throw new IllegalArgumentException(
+                    "Момент окончания подписки не должен быть null"
+            );
+        }
+
+        if (now.isBefore(this.currentPeriodEnd)) {
+            throw new IllegalStateException(
+                    "Подписка не может истечь до окончания " +
+                            "оплаченного периода"
+            );
+        }
+
+        this.status = SubscriptionStatus.EXPIRED;
+        this.cancelAtPeriodEnd = false;
+    }
+
+    public void renewPaidPeriod(
+            Instant newPeriodStart,
+            Instant newPeriodEnd
+    ) {
+        ensureActive();
+
+        if (this.cancelAtPeriodEnd) {
+            throw new IllegalStateException(
+                    "Нельзя продлить подписку " +
+                            "с запланированной отменой"
+            );
+        }
+
+        Instant validatedPeriodStart = validatePeriodStart(newPeriodStart);
+        Instant validatedPeriodEnd = validatePeriodEnd(validatedPeriodStart, newPeriodEnd);
+
+        if (!validatedPeriodStart.equals(this.currentPeriodEnd)) {
+            throw new IllegalStateException(
+                    "Новый период должен начинаться " +
+                            "в момент окончания текущего периода"
+            );
+        }
+
+        this.currentPeriodStart = validatedPeriodStart;
+        this.currentPeriodEnd = validatedPeriodEnd;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -204,6 +268,53 @@ public class UserSubscription {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void markPastDue() {
+        ensureActive();
+
+        this.status = SubscriptionStatus.PAST_DUE;
+        this.cancelAtPeriodEnd = false;
+    }
+
+    public void recoverAfterPayment(
+            Instant newPeriodStart,
+            Instant newPeriodEnd
+    ) {
+        ensurePastDue();
+
+        Instant validatedPeriodStart = validatePeriodStart(newPeriodStart);
+        Instant validatedPeriodEnd = validatePeriodEnd(validatedPeriodStart, newPeriodEnd);
+
+        this.currentPeriodStart = validatedPeriodStart;
+        this.currentPeriodEnd = validatedPeriodEnd;
+        this.status = SubscriptionStatus.ACTIVE;
+        this.cancelAtPeriodEnd = false;
+    }
+
+    private void ensureActive() {
+        if (this.status != SubscriptionStatus.ACTIVE) {
+            throw new IllegalStateException(
+                    "Операция доступна только для активной подписки"
+            );
+        }
+    }
+
+    private void ensurePastDue() {
+        if (this.status != SubscriptionStatus.PAST_DUE) {
+            throw new IllegalStateException(
+                    "Операция доступна только для подписки с просроченной оплатой"
+            );
+        }
+    }
+
+    private void ensureNonTerminal() {
+        if (this.status != SubscriptionStatus.ACTIVE
+                && this.status != SubscriptionStatus.PAST_DUE) {
+            throw new IllegalStateException(
+                    "Операция недоступна для завершённой подписки"
+            );
+        }
     }
 
     private static User validateUser(User user) {
