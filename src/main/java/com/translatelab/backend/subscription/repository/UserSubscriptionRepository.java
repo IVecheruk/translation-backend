@@ -1,8 +1,10 @@
 package com.translatelab.backend.subscription.repository;
 
 import com.translatelab.backend.subscription.entity.UserSubscription;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -27,5 +29,18 @@ public interface UserSubscriptionRepository extends JpaRepository<UserSubscripti
     Optional<UserSubscription> findEffectiveActiveByUserIdAt(
             @Param("userId") UUID userId,
             @Param("now") Instant now
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+              SELECT subscription
+              FROM UserSubscription subscription
+              WHERE subscription.provider = :provider
+                AND subscription.externalSubscriptionId =
+                    :externalSubscriptionId
+              """)
+    Optional<UserSubscription> findByProviderAndExternalSubscriptionIdForUpdate(
+            @Param("provider") String provider,
+            @Param("externalSubscriptionId") String externalSubscriptionId
     );
 }
