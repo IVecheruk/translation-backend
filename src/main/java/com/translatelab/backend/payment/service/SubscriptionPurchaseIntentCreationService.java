@@ -3,11 +3,13 @@ package com.translatelab.backend.payment.service;
 import com.translatelab.backend.config.PaymentProperties;
 import com.translatelab.backend.payment.dto.SubscriptionPurchaseIntentCreationCommand;
 import com.translatelab.backend.payment.dto.SubscriptionPurchaseIntentCreationResult;
+import com.translatelab.backend.payment.entity.BillingPeriod;
+import com.translatelab.backend.payment.entity.PlanPaymentOffer;
 import com.translatelab.backend.payment.entity.SubscriptionPurchaseIntent;
+import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
+import com.translatelab.backend.payment.repository.PlanPaymentOfferRepository;
 import com.translatelab.backend.payment.repository.SubscriptionPurchaseIntentRepository;
 import com.translatelab.backend.plan.entity.SubscriptionPlan;
-import com.translatelab.backend.plan.exception.SubscriptionPlanNotFoundException;
-import com.translatelab.backend.plan.repository.SubscriptionPlanRepository;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import com.translatelab.backend.user.repository.UserRepository;
@@ -25,27 +27,27 @@ public class SubscriptionPurchaseIntentCreationService {
 
     private final SubscriptionPurchaseIntentRepository intentRepository;
     private final UserRepository userRepository;
-    private final SubscriptionPlanRepository planRepository;
+    private final PlanPaymentOfferRepository offerRepository;
     private final PaymentProperties paymentProperties;
     private final Clock clock;
 
     public SubscriptionPurchaseIntentCreationService(
             SubscriptionPurchaseIntentRepository intentRepository,
             UserRepository userRepository,
-            SubscriptionPlanRepository planRepository,
+            PlanPaymentOfferRepository offerRepository,
             PaymentProperties paymentProperties,
             Clock clock
     ) {
         this.intentRepository = intentRepository;
         this.userRepository = userRepository;
-        this.planRepository = planRepository;
+        this.offerRepository = offerRepository;
         this.paymentProperties = paymentProperties;
         this.clock = clock;
     }
 
     @Transactional
     public SubscriptionPurchaseIntentCreationResult create(
-        SubscriptionPurchaseIntentCreationCommand command
+            SubscriptionPurchaseIntentCreationCommand command
     ) {
         Objects.requireNonNull(
                 command,
@@ -55,13 +57,19 @@ public class SubscriptionPurchaseIntentCreationService {
         User user = userRepository.findById(command.userId())
                 .orElseThrow(UserNotFoundException::new);
 
-        SubscriptionPlan plan = planRepository
-                .findById(command.planCode())
-                .filter(SubscriptionPlan::isActive)
-                .filter(candidate ->
-                        !FREE_PLAN_CODE.equals(candidate.getCode())
-                )
-                .orElseThrow(SubscriptionPlanNotFoundException::new);
+        PlanPaymentOffer offer = offerRepository.
+                findByPlan_CodeAndProviderAndBillingPeriodAndActiveTrueAndPlan_ActiveTrue(
+                command.planCode(),
+                command.provider(),
+                BillingPeriod.MONTH
+        )
+                .orElseThrow(PlanPaymentOfferNotFoundException::new);
+
+        SubscriptionPlan plan = offer.getPlan();
+
+        if (FREE_PLAN_CODE.equals(plan.getCode())) {
+            throw new PlanPaymentOfferNotFoundException();
+        }
 
         Instant now = clock.instant();
         Instant expiresAt = now.plus(
@@ -72,7 +80,7 @@ public class SubscriptionPurchaseIntentCreationService {
                 SubscriptionPurchaseIntent.pending(
                         user,
                         plan,
-                        command.provider(),
+                        offer.getProvider(),
                         now,
                         expiresAt
                 );

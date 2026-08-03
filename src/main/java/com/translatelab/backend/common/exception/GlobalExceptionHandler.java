@@ -3,6 +3,7 @@ package com.translatelab.backend.common.exception;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
+import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
 import com.translatelab.backend.payment.exception.SubscriptionPurchaseIntentNotFoundException;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.plan.exception.SubscriptionPlanNotFoundException;
@@ -310,6 +311,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SubscriptionPurchaseIntentNotFoundException.class)
     public ResponseEntity<ApiError> handleSubscriptionPurchaseIntentNotFound(
             SubscriptionPurchaseIntentNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(PlanPaymentOfferNotFoundException.class)
+    public ResponseEntity<ApiError> handlePlanPaymentOfferNotFound(
+            PlanPaymentOfferNotFoundException exception,
             HttpServletRequest request
     ) {
         return buildResponse(
