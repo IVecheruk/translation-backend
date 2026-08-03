@@ -79,8 +79,7 @@ public class SubscriptionPurchaseIntentCreationService {
         SubscriptionPurchaseIntent intent =
                 SubscriptionPurchaseIntent.pending(
                         user,
-                        plan,
-                        offer.getProvider(),
+                        offer,
                         now,
                         expiresAt
                 );

@@ -48,6 +48,10 @@ public class SubscriptionPurchaseIntent {
     )
     private SubscriptionPlan plan;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "offer_code", nullable = true, updatable = false)
+    private PlanPaymentOffer offer;
+
     @Column(
             name = "provider",
             nullable = false,
@@ -85,16 +89,16 @@ public class SubscriptionPurchaseIntent {
 
     private SubscriptionPurchaseIntent(
             User user,
-            SubscriptionPlan plan,
-            String provider,
+            PlanPaymentOffer offer,
             Instant now,
             Instant expiresAt
     ) {
         Instant validatedNow = validateNow(now);
 
         this.user = validateUser(user);
-        this.plan = validatePlan(plan);
-        this.provider = validateProvider(provider);
+        this.offer = validateOffer(offer);
+        this.plan = validatePlan(this.offer.getPlan());
+        this.provider = validateProvider(this.offer.getProvider());
         this.expiresAt = validateExpiresAt(
                 validatedNow,
                 expiresAt
@@ -104,17 +108,16 @@ public class SubscriptionPurchaseIntent {
         this.consumedAt = null;
     }
 
+
     public static SubscriptionPurchaseIntent pending(
             User user,
-            SubscriptionPlan plan,
-            String provider,
+            PlanPaymentOffer offer,
             Instant now,
             Instant expiresAt
     ) {
         return new SubscriptionPurchaseIntent(
                 user,
-                plan,
-                provider,
+                offer,
                 now,
                 expiresAt
         );
@@ -187,6 +190,10 @@ public class SubscriptionPurchaseIntent {
         return plan;
     }
 
+    public PlanPaymentOffer getOffer() {
+        return offer;
+    }
+
     public String getProvider() {
         return provider;
     }
@@ -245,6 +252,24 @@ public class SubscriptionPurchaseIntent {
         }
 
         return user;
+    }
+
+    private static PlanPaymentOffer validateOffer(
+            PlanPaymentOffer offer
+    ) {
+        if (offer == null) {
+            throw new IllegalArgumentException(
+                    "Платёжное предложение не должно быть null"
+            );
+        }
+
+        if (!offer.isActive()) {
+            throw new IllegalArgumentException(
+                    "Нельзя создать заявку для неактивного платёжного предложения"
+            );
+        }
+
+        return offer;
     }
 
     private static SubscriptionPlan validatePlan(
