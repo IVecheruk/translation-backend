@@ -38,4 +38,17 @@ public interface SubscriptionPurchaseIntentRepository
             @Param("intentId") UUID intentId,
             @Param("provider") String provider
     );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+              SELECT intent
+              FROM SubscriptionPurchaseIntent intent
+              WHERE intent.provider = :provider
+                AND intent.externalCheckoutId = :externalCheckoutId
+              """)
+    Optional<SubscriptionPurchaseIntent>
+            findByProviderAndExternalCheckoutIdForUpdate(
+                    @Param("provider") String provider,
+                    @Param("externalCheckoutId") String externalCheckoutId
+            );
 }
