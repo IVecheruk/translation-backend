@@ -1,12 +1,19 @@
 package com.translatelab.backend.payment.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.time.Instant;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
 public record SubscriptionPurchaseIntentCreationResult(
+
+        @JsonProperty("intent_id")
         UUID intentId,
+
         String provider,
+
+        @JsonProperty("expires_at")
         Instant expiresAt
 ) {
 

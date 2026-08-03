@@ -1,6 +1,8 @@
 package com.translatelab.backend.config;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -11,7 +13,11 @@ import java.time.Duration;
 public record PaymentProperties(
 
         @NotNull
-        Duration purchaseIntentTtl
+        Duration purchaseIntentTtl,
+
+        @NotBlank
+        @Pattern(regexp = "^[A-Z][A-Z0-9_]{0,31}$")
+        String provider
 ) {
 
     public PaymentProperties {
