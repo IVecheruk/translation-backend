@@ -4,6 +4,7 @@ import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
+import com.translatelab.backend.plan.exception.SubscriptionPlanNotFoundException;
 import com.translatelab.backend.storage.exception.StorageException;
 import com.translatelab.backend.translation.exception.*;
 import com.translatelab.backend.usage.exception.UsageLimitExceededException;
@@ -282,6 +283,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UsageReservationNotFoundException.class)
     public ResponseEntity<ApiError> handleUsageReservationNotFound(
             UsageReservationNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(SubscriptionPlanNotFoundException.class)
+    public ResponseEntity<ApiError> handleSubscriptionPlanNotFound(
+            SubscriptionPlanNotFoundException exception,
             HttpServletRequest request
     ) {
         return buildResponse(
