@@ -38,6 +38,10 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/login"
                         ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/subscription-offers"
+                        ).permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers(
                                 "/v3/api-docs/**",
