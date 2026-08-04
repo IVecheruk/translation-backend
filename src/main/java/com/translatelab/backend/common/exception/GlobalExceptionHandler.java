@@ -3,6 +3,7 @@ package com.translatelab.backend.common.exception;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
+import com.translatelab.backend.payment.exception.PaymentProviderUnavailableException;
 import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
 import com.translatelab.backend.payment.exception.SubscriptionPurchaseIntentNotFoundException;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
@@ -332,6 +333,27 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 Map.of()
         );
+    }
+
+    @ExceptionHandler(PaymentProviderUnavailableException.class)
+    public ResponseEntity<ApiError> handlePaymentProviderUnavailable(
+            PaymentProviderUnavailableException exception,
+            HttpServletRequest request
+    ) {
+
+        LOGGER.error(
+                "Ошибка платёжного провайдера при обработке запроса {}",
+                request.getRequestURI(),
+                exception
+        );
+
+        return buildResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+
     }
 
     private ResponseEntity<ApiError> buildResponse(
