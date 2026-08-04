@@ -48,13 +48,6 @@ public class SubscriptionPurchaseIntentCreationService {
     }
 
     @Transactional
-    public SubscriptionPurchaseIntentCreationResult create(
-            SubscriptionPurchaseIntentCreationCommand command
-    ) {
-        return createPreparation(command).intentCreationResult();
-    }
-
-    @Transactional
     public SubscriptionPurchasePreparationResult prepare(
             SubscriptionPurchaseIntentCreationCommand command
     ) {
