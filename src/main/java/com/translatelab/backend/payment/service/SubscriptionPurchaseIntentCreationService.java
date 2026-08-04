@@ -1,8 +1,10 @@
 package com.translatelab.backend.payment.service;
 
 import com.translatelab.backend.config.PaymentProperties;
+import com.translatelab.backend.payment.dto.PaymentCheckoutCreationCommand;
 import com.translatelab.backend.payment.dto.SubscriptionPurchaseIntentCreationCommand;
 import com.translatelab.backend.payment.dto.SubscriptionPurchaseIntentCreationResult;
+import com.translatelab.backend.payment.dto.SubscriptionPurchasePreparationResult;
 import com.translatelab.backend.payment.entity.BillingPeriod;
 import com.translatelab.backend.payment.entity.PlanPaymentOffer;
 import com.translatelab.backend.payment.entity.SubscriptionPurchaseIntent;
@@ -49,6 +51,19 @@ public class SubscriptionPurchaseIntentCreationService {
     public SubscriptionPurchaseIntentCreationResult create(
             SubscriptionPurchaseIntentCreationCommand command
     ) {
+        return createPreparation(command).intentCreationResult();
+    }
+
+    @Transactional
+    public SubscriptionPurchasePreparationResult prepare(
+            SubscriptionPurchaseIntentCreationCommand command
+    ) {
+        return createPreparation(command);
+    }
+
+    private SubscriptionPurchasePreparationResult createPreparation(
+            SubscriptionPurchaseIntentCreationCommand command
+    ) {
         Objects.requireNonNull(
                 command,
                 "Команда создания заявки не должна быть null"
@@ -57,8 +72,8 @@ public class SubscriptionPurchaseIntentCreationService {
         User user = userRepository.findById(command.userId())
                 .orElseThrow(UserNotFoundException::new);
 
-        PlanPaymentOffer offer = offerRepository.
-                findByPlan_CodeAndProviderAndBillingPeriodAndActiveTrueAndPlan_ActiveTrue(
+        PlanPaymentOffer offer = offerRepository
+                .findByPlan_CodeAndProviderAndBillingPeriodAndActiveTrueAndPlan_ActiveTrue(
                 command.planCode(),
                 command.provider(),
                 BillingPeriod.MONTH
@@ -87,10 +102,29 @@ public class SubscriptionPurchaseIntentCreationService {
         SubscriptionPurchaseIntent savedIntent =
                 intentRepository.saveAndFlush(intent);
 
-        return new SubscriptionPurchaseIntentCreationResult(
-                savedIntent.getId(),
-                savedIntent.getProvider(),
-                savedIntent.getExpiresAt()
+        SubscriptionPurchaseIntentCreationResult intentCreationResult =
+                new SubscriptionPurchaseIntentCreationResult(
+                        savedIntent.getId(),
+                        savedIntent.getProvider(),
+                        savedIntent.getExpiresAt()
+                );
+
+        PaymentCheckoutCreationCommand checkoutCommand =
+                new PaymentCheckoutCreationCommand(
+                        savedIntent.getId(),
+                        offer.getCode(),
+                        plan.getCode(),
+                        plan.getDisplayName(),
+                        offer.getPriceMinor(),
+                        offer.getCurrency(),
+                        offer.getBillingPeriod(),
+                        offer.getExternalProductId(),
+                        savedIntent.getExpiresAt()
+                );
+
+        return new SubscriptionPurchasePreparationResult(
+                intentCreationResult,
+                checkoutCommand
         );
     }
 }
