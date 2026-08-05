@@ -48,6 +48,10 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
                         ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/payments/webhooks/tribute"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
