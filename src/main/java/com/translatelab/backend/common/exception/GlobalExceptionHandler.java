@@ -7,6 +7,7 @@ import com.translatelab.backend.payment.exception.PaymentProviderUnavailableExce
 import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
 import com.translatelab.backend.payment.exception.SubscriptionPurchaseIntentNotFoundException;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookException;
+import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookSignatureException;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.plan.exception.SubscriptionPlanNotFoundException;
 import com.translatelab.backend.storage.exception.StorageException;
@@ -363,6 +364,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(InvalidTributeWebhookSignatureException.class)
+    public ResponseEntity<ApiError> handleInvalidTributeWebhookSignature(
+            InvalidTributeWebhookSignatureException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.UNAUTHORIZED,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
