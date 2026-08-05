@@ -6,6 +6,7 @@ import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.payment.exception.PaymentProviderUnavailableException;
 import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
 import com.translatelab.backend.payment.exception.SubscriptionPurchaseIntentNotFoundException;
+import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookException;
 import com.translatelab.backend.plan.exception.FeatureNotAvailableException;
 import com.translatelab.backend.plan.exception.SubscriptionPlanNotFoundException;
 import com.translatelab.backend.storage.exception.StorageException;
@@ -353,7 +354,19 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 Map.of()
         );
+    }
 
+    @ExceptionHandler(InvalidTributeWebhookException.class)
+    public ResponseEntity<ApiError> handleInvalidTributeWebhook(
+            InvalidTributeWebhookException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
     }
 
     private ResponseEntity<ApiError> buildResponse(
