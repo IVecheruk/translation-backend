@@ -7,6 +7,9 @@ import java.util.UUID;
 
 public record TranslationTaskMessage(
 
+        @JsonProperty("event_id")
+        UUID eventId,
+
         @JsonProperty("job_id")
         UUID jobId,
 
