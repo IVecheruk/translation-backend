@@ -4,7 +4,11 @@ import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.payment.exception.PaymentProviderUnavailableException;
+import com.translatelab.backend.payment.exception.InvalidPaymentConfirmationException;
 import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
+import com.translatelab.backend.payment.exception.SubscriptionPurchaseConflictException;
+import com.translatelab.backend.payment.provider.tribute.exception.TributeWebhookPayloadTooLargeException;
+import com.translatelab.backend.subscription.exception.SubscriptionCancellationNotSupportedException;
 import com.translatelab.backend.payment.exception.SubscriptionPurchaseIntentNotFoundException;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookException;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookSignatureException;
@@ -371,6 +375,45 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(SubscriptionPurchaseConflictException.class)
+    public ResponseEntity<ApiError> handleSubscriptionPurchaseConflict(
+            SubscriptionPurchaseConflictException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(SubscriptionCancellationNotSupportedException.class)
+    public ResponseEntity<ApiError> handleSubscriptionCancellationNotSupported(
+            SubscriptionCancellationNotSupportedException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(InvalidPaymentConfirmationException.class)
+    public ResponseEntity<ApiError> handleInvalidPaymentConfirmation(
+            InvalidPaymentConfirmationException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
     @ExceptionHandler(InvalidTributeWebhookException.class)
     public ResponseEntity<ApiError> handleInvalidTributeWebhook(
             InvalidTributeWebhookException exception,
@@ -378,6 +421,19 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.BAD_REQUEST,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(TributeWebhookPayloadTooLargeException.class)
+    public ResponseEntity<ApiError> handleTributeWebhookPayloadTooLarge(
+            TributeWebhookPayloadTooLargeException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.PAYLOAD_TOO_LARGE,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()

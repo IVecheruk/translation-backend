@@ -54,13 +54,30 @@ public class SubscriptionPurchaseCheckoutService {
                 "Платёжный gateway не должен возвращать null"
         );
 
-        attachmentService.attach(
-                new SubscriptionPurchaseIntentCheckoutAttachmentCommand(
+        try {
+            attachmentService.attach(
+                    new SubscriptionPurchaseIntentCheckoutAttachmentCommand(
+                            command.userId(),
+                            intentResult.intentId(),
+                            checkoutResult.externalCheckoutId()
+                    )
+            );
+        } catch (RuntimeException attachmentFailure) {
+            try {
+                gateway.cancelCheckout(checkoutResult.externalCheckoutId());
+            } catch (RuntimeException compensationFailure) {
+                attachmentFailure.addSuppressed(compensationFailure);
+            }
+            try {
+                attachmentService.abandon(
                         command.userId(),
-                        intentResult.intentId(),
-                        checkoutResult.externalCheckoutId()
-                )
-        );
+                        intentResult.intentId()
+                );
+            } catch (RuntimeException abandonmentFailure) {
+                attachmentFailure.addSuppressed(abandonmentFailure);
+            }
+            throw attachmentFailure;
+        }
 
         return new SubscriptionPurchaseStartResponse(
                 intentResult.intentId(),

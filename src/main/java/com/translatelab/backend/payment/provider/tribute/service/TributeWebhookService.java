@@ -6,6 +6,11 @@ import com.translatelab.backend.payment.provider.tribute.TributeWebhookPayloadDe
 import com.translatelab.backend.payment.provider.tribute.TributeWebhookSignatureVerifier;
 import com.translatelab.backend.payment.provider.tribute.dto.TributeShopOrderPayload;
 import com.translatelab.backend.payment.provider.tribute.dto.TributeWebhookEvent;
+import com.translatelab.backend.payment.provider.tribute.dto.TributeRecurringOrderPayload;
+import com.translatelab.backend.payment.provider.tribute.dto.TributeFailedOrderPayload;
+import com.translatelab.backend.payment.entity.BillingPeriod;
+import com.translatelab.backend.payment.service.SubscriptionProviderLifecycleService;
+import com.translatelab.backend.payment.service.SubscriptionPurchaseFailureService;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookException;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookSignatureException;
 import com.translatelab.backend.payment.service.SubscriptionPurchaseCompletionService;
@@ -29,13 +34,17 @@ public class TributeWebhookService {
     private final TributeWebhookPayloadDecoder payloadDecoder;
     private final TributeWebhookCommandMapper commandMapper;
     private final SubscriptionPurchaseCompletionService completionService;
+    private final SubscriptionProviderLifecycleService lifecycleService;
+    private final SubscriptionPurchaseFailureService purchaseFailureService;
 
     public TributeWebhookService(
             TributeWebhookSignatureVerifier signatureVerifier,
             ObjectMapper objectMapper,
             TributeWebhookPayloadDecoder payloadDecoder,
             TributeWebhookCommandMapper commandMapper,
-            SubscriptionPurchaseCompletionService completionService
+            SubscriptionPurchaseCompletionService completionService,
+            SubscriptionProviderLifecycleService lifecycleService,
+            SubscriptionPurchaseFailureService purchaseFailureService
     ) {
         this.signatureVerifier = Objects.requireNonNull(
                 signatureVerifier,
@@ -61,6 +70,14 @@ public class TributeWebhookService {
                 completionService,
                 "Сервис завершения покупки не должен быть null"
         );
+        this.lifecycleService = Objects.requireNonNull(
+                lifecycleService,
+                "Сервис lifecycle подписки не должен быть null"
+        );
+        this.purchaseFailureService = Objects.requireNonNull(
+                purchaseFailureService,
+                "Сервис неуспешной покупки не должен быть null"
+        );
     }
 
     public boolean processWebhook(
@@ -77,16 +94,15 @@ public class TributeWebhookService {
         TributeWebhookEvent event =
                 deserializeEvent(rawBody);
 
-        TributeShopOrderPayload payload =
-                payloadDecoder.decodeShopOrder(event);
-
-        SubscriptionPurchaseCompletionCommand command =
-                commandMapper.toPurchaseCompletionCommand(
-                        event,
-                        payload
-                );
-
-        return completionService.processCompletion(command);
+        return switch (event.name()) {
+            case "shop_order" -> processInitialPayment(event);
+            case "shop_order_charge_success" -> processChargeSuccess(event);
+            case "shop_order_charge_failed" -> processChargeFailure(event);
+            case "shop_order_cancelled" -> processCancellation(event);
+            case "shop_order_refunded" -> processRefund(event);
+            case "shop_order_payment_failed" -> processInitialFailure(event);
+            default -> throw new InvalidTributeWebhookException();
+        };
     }
 
     private TributeWebhookEvent deserializeEvent(
@@ -105,5 +121,65 @@ public class TributeWebhookService {
                     exception
             );
         }
+    }
+
+    private boolean processInitialPayment(TributeWebhookEvent event) {
+        TributeShopOrderPayload payload = payloadDecoder.decodeShopOrder(event);
+        SubscriptionPurchaseCompletionCommand command =
+                commandMapper.toPurchaseCompletionCommand(event, payload);
+        return completionService.processCompletion(command);
+    }
+
+    private boolean processChargeSuccess(TributeWebhookEvent event) {
+        TributeRecurringOrderPayload payload =
+                payloadDecoder.decodeRecurringOrder(event);
+        return lifecycleService.processRecurringCharge(
+                "TRIBUTE", eventId(event, payload.uuid().toString()),
+                payload.uuid().toString(), payload.amount(),
+                upper(payload.currency()), BillingPeriod.MONTH
+        );
+    }
+
+    private boolean processChargeFailure(TributeWebhookEvent event) {
+        TributeRecurringOrderPayload payload =
+                payloadDecoder.decodeRecurringOrder(event);
+        return lifecycleService.processChargeFailure(
+                "TRIBUTE", eventId(event, payload.uuid().toString()),
+                payload.uuid().toString(), payload.amount(),
+                upper(payload.currency()), BillingPeriod.MONTH
+        );
+    }
+
+    private boolean processCancellation(TributeWebhookEvent event) {
+        TributeRecurringOrderPayload payload =
+                payloadDecoder.decodeRecurringOrder(event);
+        return lifecycleService.processCancellation(
+                "TRIBUTE", eventId(event, payload.uuid().toString()),
+                payload.uuid().toString()
+        );
+    }
+
+    private boolean processRefund(TributeWebhookEvent event) {
+        TributeFailedOrderPayload payload = payloadDecoder.decodeFailedOrder(event);
+        return lifecycleService.processRevocation(
+                "TRIBUTE", eventId(event, payload.uuid().toString()),
+                payload.uuid().toString(), payload.amount(), upper(payload.currency())
+        );
+    }
+
+    private boolean processInitialFailure(TributeWebhookEvent event) {
+        TributeFailedOrderPayload payload = payloadDecoder.decodeFailedOrder(event);
+        return purchaseFailureService.processFailure(
+                "TRIBUTE", eventId(event, payload.uuid().toString()),
+                payload.uuid().toString(), payload.amount(), upper(payload.currency())
+        );
+    }
+
+    private String eventId(TributeWebhookEvent event, String orderId) {
+        return event.name() + ':' + orderId + ':' + event.createdAt();
+    }
+
+    private String upper(String value) {
+        return value.toUpperCase(java.util.Locale.ROOT);
     }
 }

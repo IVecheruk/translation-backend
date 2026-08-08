@@ -9,12 +9,15 @@ import com.translatelab.backend.payment.entity.BillingPeriod;
 import com.translatelab.backend.payment.entity.PlanPaymentOffer;
 import com.translatelab.backend.payment.entity.SubscriptionPurchaseIntent;
 import com.translatelab.backend.payment.exception.PlanPaymentOfferNotFoundException;
+import com.translatelab.backend.payment.exception.SubscriptionPurchaseConflictException;
 import com.translatelab.backend.payment.repository.PlanPaymentOfferRepository;
 import com.translatelab.backend.payment.repository.SubscriptionPurchaseIntentRepository;
 import com.translatelab.backend.plan.entity.SubscriptionPlan;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import com.translatelab.backend.user.repository.UserRepository;
+import com.translatelab.backend.subscription.entity.UserSubscription;
+import com.translatelab.backend.subscription.repository.UserSubscriptionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +33,7 @@ public class SubscriptionPurchaseIntentCreationService {
     private final SubscriptionPurchaseIntentRepository intentRepository;
     private final UserRepository userRepository;
     private final PlanPaymentOfferRepository offerRepository;
+    private final UserSubscriptionRepository subscriptionRepository;
     private final PaymentProperties paymentProperties;
     private final Clock clock;
 
@@ -37,12 +41,14 @@ public class SubscriptionPurchaseIntentCreationService {
             SubscriptionPurchaseIntentRepository intentRepository,
             UserRepository userRepository,
             PlanPaymentOfferRepository offerRepository,
+            UserSubscriptionRepository subscriptionRepository,
             PaymentProperties paymentProperties,
             Clock clock
     ) {
         this.intentRepository = intentRepository;
         this.userRepository = userRepository;
         this.offerRepository = offerRepository;
+        this.subscriptionRepository = subscriptionRepository;
         this.paymentProperties = paymentProperties;
         this.clock = clock;
     }
@@ -62,7 +68,7 @@ public class SubscriptionPurchaseIntentCreationService {
                 "Команда создания заявки не должна быть null"
         );
 
-        User user = userRepository.findById(command.userId())
+        User user = userRepository.findByIdForUpdate(command.userId())
                 .orElseThrow(UserNotFoundException::new);
 
         PlanPaymentOffer offer = offerRepository
@@ -80,6 +86,8 @@ public class SubscriptionPurchaseIntentCreationService {
         }
 
         Instant now = clock.instant();
+        reconcilePurchaseState(command, now);
+
         Instant expiresAt = now.plus(
                 paymentProperties.purchaseIntentTtl()
         );
@@ -108,10 +116,10 @@ public class SubscriptionPurchaseIntentCreationService {
                         offer.getCode(),
                         plan.getCode(),
                         plan.getDisplayName(),
-                        offer.getPriceMinor(),
-                        offer.getCurrency(),
-                        offer.getBillingPeriod(),
-                        offer.getExternalProductId(),
+                        intent.getPriceMinor(),
+                        intent.getCurrency(),
+                        intent.getBillingPeriod(),
+                        intent.getExternalProductId(),
                         savedIntent.getExpiresAt()
                 );
 
@@ -119,5 +127,40 @@ public class SubscriptionPurchaseIntentCreationService {
                 intentCreationResult,
                 checkoutCommand
         );
+    }
+
+    private void reconcilePurchaseState(
+            SubscriptionPurchaseIntentCreationCommand command,
+            Instant now
+    ) {
+        subscriptionRepository.findLiveByUserIdForUpdate(command.userId())
+                .ifPresent(subscription -> reconcileSubscription(subscription, now));
+
+        intentRepository.findPendingByUserIdForUpdate(command.userId())
+                .ifPresent(intent -> reconcileIntent(intent, now));
+    }
+
+    private void reconcileSubscription(
+            UserSubscription subscription,
+            Instant now
+    ) {
+        if (!now.isBefore(subscription.getCurrentPeriodEnd())) {
+            subscription.expire(now);
+            return;
+        }
+
+        throw new SubscriptionPurchaseConflictException();
+    }
+
+    private void reconcileIntent(
+            SubscriptionPurchaseIntent intent,
+            Instant now
+    ) {
+        if (!now.isBefore(intent.getExpiresAt())) {
+            intent.expire(now);
+            return;
+        }
+
+        throw new SubscriptionPurchaseConflictException();
     }
 }

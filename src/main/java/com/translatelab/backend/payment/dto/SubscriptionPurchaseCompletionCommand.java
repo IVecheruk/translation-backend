@@ -1,5 +1,7 @@
 package com.translatelab.backend.payment.dto;
 
+import com.translatelab.backend.payment.entity.BillingPeriod;
+
 import java.time.Instant;
 import java.util.regex.Pattern;
 
@@ -7,106 +9,76 @@ public record SubscriptionPurchaseCompletionCommand(
         String provider,
         String externalEventId,
         String externalCheckoutId,
+        String externalOrderId,
         String externalCustomerId,
         String externalSubscriptionId,
+        long paidAmountMinor,
+        String paidCurrency,
+        BillingPeriod paidBillingPeriod,
+        String paidExternalProductId,
         Instant periodStart,
         Instant periodEnd
 ) {
 
-    private static final Pattern PROVIDER_PATTERN = Pattern.compile(
-            "^[A-Z][A-Z0-9_]{0,31}$"
-    );
+    private static final Pattern PROVIDER_PATTERN =
+            Pattern.compile("^[A-Z][A-Z0-9_]{0,31}$");
+    private static final Pattern CURRENCY_PATTERN =
+            Pattern.compile("^[A-Z]{3}$");
 
     public SubscriptionPurchaseCompletionCommand {
-        validateProvider(provider);
-
-        externalEventId = normalizeRequiredExternalId(
-                externalEventId,
-                "Внешний идентификатор события"
-        );
-        externalCheckoutId = normalizeRequiredExternalId(
-                externalCheckoutId,
-                "Внешний идентификатор checkout"
-        );
-        externalCustomerId = normalizeOptionalExternalId(
-                externalCustomerId,
-                "Внешний идентификатор клиента"
-        );
-        externalSubscriptionId = normalizeRequiredExternalId(
-                externalSubscriptionId,
-                "Внешний идентификатор подписки"
-        );
-
-        validatePeriod(periodStart, periodEnd);
-    }
-
-    private static void validateProvider(String provider) {
-        if (provider == null
-                || !PROVIDER_PATTERN.matcher(provider).matches()) {
+        if (provider == null || !PROVIDER_PATTERN.matcher(provider).matches()) {
             throw new IllegalArgumentException(
                     "Некорректный формат кода платёжного провайдера"
             );
         }
+        externalEventId = normalizeRequired(externalEventId, "события");
+        externalCheckoutId = normalizeRequired(externalCheckoutId, "checkout");
+        externalOrderId = normalizeRequired(externalOrderId, "заказа");
+        externalCustomerId = normalizeOptional(externalCustomerId, "клиента");
+        externalSubscriptionId = normalizeOptional(
+                externalSubscriptionId,
+                "подписки"
+        );
+        if (paidAmountMinor <= 0) {
+            throw new IllegalArgumentException("Сумма платежа должна быть больше нуля");
+        }
+        if (paidCurrency == null
+                || !CURRENCY_PATTERN.matcher(paidCurrency).matches()) {
+            throw new IllegalArgumentException("Некорректная валюта платежа");
+        }
+        if (paidBillingPeriod == null) {
+            throw new IllegalArgumentException("Период платежа не должен быть null");
+        }
+        paidExternalProductId = normalizeOptional(
+                paidExternalProductId,
+                "продукта"
+        );
+        if (periodStart == null || periodEnd == null
+                || !periodEnd.isAfter(periodStart)) {
+            throw new IllegalArgumentException("Некорректный оплаченный период");
+        }
     }
 
-    private static String normalizeRequiredExternalId(
-            String value,
-            String fieldName
-    ) {
-        if (value == null) {
+    private static String normalizeRequired(String value, String field) {
+        String normalized = normalizeOptional(value, field);
+        if (normalized == null) {
             throw new IllegalArgumentException(
-                    fieldName + " не должен быть null"
+                    "Внешний идентификатор " + field + " не должен быть null"
             );
         }
-
-        String normalized = value.strip();
-
-        if (normalized.isEmpty()) {
-            throw new IllegalArgumentException(
-                    fieldName + " не должен быть пустым"
-            );
-        }
-
-        if (normalized.length() > 255) {
-            throw new IllegalArgumentException(
-                    fieldName + " не должен превышать 255 символов"
-            );
-        }
-
         return normalized;
     }
 
-    private static String normalizeOptionalExternalId(
-            String value,
-            String fieldName
-    ) {
+    private static String normalizeOptional(String value, String field) {
         if (value == null) {
             return null;
         }
-
-        return normalizeRequiredExternalId(value, fieldName);
-    }
-
-    private static void validatePeriod(
-            Instant periodStart,
-            Instant periodEnd
-    ) {
-        if (periodStart == null) {
+        String normalized = value.strip();
+        if (normalized.isEmpty() || normalized.length() > 255) {
             throw new IllegalArgumentException(
-                    "Начало оплаченного периода не должно быть null"
+                    "Некорректный внешний идентификатор " + field
             );
         }
-
-        if (periodEnd == null) {
-            throw new IllegalArgumentException(
-                    "Конец оплаченного периода не должен быть null"
-            );
-        }
-
-        if (!periodEnd.isAfter(periodStart)) {
-            throw new IllegalArgumentException(
-                    "Конец оплаченного периода должен быть позже его начала"
-            );
-        }
+        return normalized;
     }
 }

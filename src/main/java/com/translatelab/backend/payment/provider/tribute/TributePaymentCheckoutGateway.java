@@ -4,6 +4,8 @@ import com.translatelab.backend.payment.dto.PaymentCheckoutCreationCommand;
 import com.translatelab.backend.payment.dto.PaymentCheckoutResult;
 import com.translatelab.backend.payment.exception.PaymentProviderUnavailableException;
 import com.translatelab.backend.payment.provider.PaymentCheckoutGateway;
+import com.translatelab.backend.payment.provider.SubscriptionCancellationGateway;
+import com.translatelab.backend.payment.provider.tribute.dto.TributeCancelOrderResponse;
 import com.translatelab.backend.payment.provider.tribute.dto.TributeCreateOrderRequest;
 import com.translatelab.backend.payment.provider.tribute.dto.TributeCreateOrderResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -22,7 +24,7 @@ import java.util.Objects;
         havingValue = "true"
 )
 public class TributePaymentCheckoutGateway
-        implements PaymentCheckoutGateway {
+        implements PaymentCheckoutGateway, SubscriptionCancellationGateway {
 
     private static final String PROVIDER_CODE = "TRIBUTE";
     private static final String CREATE_ORDER_PATH = "/shop/orders";
@@ -77,5 +79,36 @@ public class TributePaymentCheckoutGateway
         }
 
         return mapper.toCheckoutResult(response);
+    }
+
+    @Override
+    public void cancelCheckout(String externalCheckoutId) {
+        requestCancellation(externalCheckoutId);
+    }
+
+    @Override
+    public boolean requestCancellation(String externalCheckoutId) {
+        final java.util.UUID orderId;
+        try {
+            orderId = java.util.UUID.fromString(externalCheckoutId);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException(
+                    "Некорректный идентификатор заказа Tribute",
+                    exception
+            );
+        }
+
+        try {
+            TributeCancelOrderResponse response = restClient.post()
+                    .uri("/shop/orders/{orderId}/cancel", orderId)
+                    .retrieve()
+                    .body(TributeCancelOrderResponse.class);
+            if (response == null || !response.success()) {
+                throw new PaymentProviderUnavailableException();
+            }
+            return true;
+        } catch (RestClientException exception) {
+            throw new PaymentProviderUnavailableException(exception);
+        }
     }
 }

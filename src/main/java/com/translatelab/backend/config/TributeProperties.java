@@ -3,6 +3,8 @@ package com.translatelab.backend.config;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.net.URI;
 import java.time.Duration;
@@ -22,8 +24,14 @@ public record TributeProperties(
         Duration connectTimeout,
 
         @NotNull
-        Duration readTimeout
+        Duration readTimeout,
+
+        @DefaultValue("65536") int webhookMaxBodyBytes,
+
+        @DefaultValue("120") int webhookRequestsPerMinute
 ) {
+
+    private static final String EXPECTED_API_HOST = "tribute.tg";
 
     private static final Duration MAX_CONNECT_TIMEOUT =
             Duration.ofSeconds(10);
@@ -31,6 +39,7 @@ public record TributeProperties(
     private static final Duration MAX_READ_TIMEOUT =
             Duration.ofSeconds(30);
 
+    @ConstructorBinding
     public TributeProperties {
         validateBaseUrl(baseUrl);
         validateTimeout(
@@ -44,6 +53,35 @@ public record TributeProperties(
                 "Таймаут ответа Tribute"
         );
         validateApiKey(enabled, apiKey);
+        if (webhookMaxBodyBytes < 1024 || webhookMaxBodyBytes > 65_536) {
+            throw new IllegalArgumentException(
+                    "Максимальный размер webhook Tribute должен быть "
+                            + "от 1024 до 65536 байт"
+            );
+        }
+        if (webhookRequestsPerMinute < 1 || webhookRequestsPerMinute > 10_000) {
+            throw new IllegalArgumentException(
+                    "Лимит webhook Tribute должен быть от 1 до 10000 запросов в минуту"
+            );
+        }
+    }
+
+    public TributeProperties(
+            boolean enabled,
+            URI baseUrl,
+            String apiKey,
+            Duration connectTimeout,
+            Duration readTimeout
+    ) {
+        this(
+                enabled,
+                baseUrl,
+                apiKey,
+                connectTimeout,
+                readTimeout,
+                65_536,
+                120
+        );
     }
 
     private static void validateBaseUrl(URI baseUrl) {
@@ -66,6 +104,16 @@ public record TributeProperties(
             throw new IllegalArgumentException(
                     "Базовый адрес Tribute не должен содержать "
                             + "учётные данные, параметры или фрагмент"
+            );
+        }
+
+        if (!EXPECTED_API_HOST.equalsIgnoreCase(baseUrl.getHost())
+                || baseUrl.getPort() != -1
+                || !("/api/v1".equals(baseUrl.getPath())
+                || "/api/v1/".equals(baseUrl.getPath()))) {
+            throw new IllegalArgumentException(
+                    "Базовый адрес Tribute должен указывать на "
+                            + "https://tribute.tg/api/v1"
             );
         }
     }
@@ -111,6 +159,8 @@ public record TributeProperties(
                 + ", apiKey=<redacted>"
                 + ", connectTimeout=" + connectTimeout
                 + ", readTimeout=" + readTimeout
+                + ", webhookMaxBodyBytes=" + webhookMaxBodyBytes
+                + ", webhookRequestsPerMinute=" + webhookRequestsPerMinute
                 + ']';
     }
 

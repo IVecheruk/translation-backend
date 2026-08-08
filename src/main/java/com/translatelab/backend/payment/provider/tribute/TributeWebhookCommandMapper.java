@@ -1,6 +1,7 @@
 package com.translatelab.backend.payment.provider.tribute;
 
 import com.translatelab.backend.payment.dto.SubscriptionPurchaseCompletionCommand;
+import com.translatelab.backend.payment.entity.BillingPeriod;
 import com.translatelab.backend.payment.provider.tribute.dto.TributeShopOrderPayload;
 import com.translatelab.backend.payment.provider.tribute.dto.TributeWebhookEvent;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookException;
@@ -61,8 +62,13 @@ public class TributeWebhookCommandMapper {
                 PROVIDER_CODE,
                 EVENT_ID_PREFIX + externalOrderId,
                 externalOrderId,
-                null,
                 externalOrderId,
+                null,
+                null,
+                payload.amount(),
+                payload.currency().toUpperCase(java.util.Locale.ROOT),
+                BillingPeriod.MONTH,
+                null,
                 periodStart,
                 periodEnd
         );

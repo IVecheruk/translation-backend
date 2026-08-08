@@ -38,10 +38,27 @@ public class TributeCheckoutMapper {
                 "Ответ Tribute не должен быть null"
         );
 
+        validateRedirectUrl(response.webappPaymentUrl());
+
         return new PaymentCheckoutResult(
                 response.uuid().toString(),
                 response.webappPaymentUrl()
         );
+    }
+
+    private void validateRedirectUrl(java.net.URI redirectUrl) {
+        if (redirectUrl == null
+                || !"https".equalsIgnoreCase(redirectUrl.getScheme())
+                || !"t.me".equalsIgnoreCase(redirectUrl.getHost())
+                || !"/tribute/app".equals(redirectUrl.getPath())
+                || redirectUrl.getUserInfo() != null
+                || redirectUrl.getFragment() != null
+                || redirectUrl.getQuery() == null
+                || !redirectUrl.getQuery().startsWith("startapp=")) {
+            throw new IllegalArgumentException(
+                    "Tribute вернул недопустимую ссылку перенаправления"
+            );
+        }
     }
 
     private String mapCurrency(String currency) {

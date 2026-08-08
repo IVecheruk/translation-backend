@@ -1,6 +1,7 @@
 package com.translatelab.backend.subscription.entity;
 
 import com.translatelab.backend.plan.entity.SubscriptionPlan;
+import com.translatelab.backend.payment.entity.BillingPeriod;
 import com.translatelab.backend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -67,8 +68,24 @@ public class UserSubscription {
     @Column(name = "external_customer_id", length = 255)
     private String externalCustomerId;
 
+    @Column(name = "external_order_id", length = 255)
+    private String externalOrderId;
+
     @Column(name = "external_subscription_id", length = 255)
     private String externalSubscriptionId;
+
+    @Column(name = "price_minor")
+    private Long priceMinor;
+
+    @Column(name = "currency", length = 3)
+    private String currency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_period", length = 16)
+    private BillingPeriod billingPeriod;
+
+    @Column(name = "external_product_id", length = 255)
+    private String externalProductId;
 
     @CreationTimestamp
     @Column(
@@ -91,7 +108,12 @@ public class UserSubscription {
             Instant currentPeriodEnd,
             String provider,
             String externalCustomerId,
-            String externalSubscriptionId
+            String externalOrderId,
+            String externalSubscriptionId,
+            Long priceMinor,
+            String currency,
+            BillingPeriod billingPeriod,
+            String externalProductId
     ) {
         this.user = validateUser(user);
         this.plan = validatePlan(plan);
@@ -106,6 +128,10 @@ public class UserSubscription {
                 externalCustomerId,
                 "Внешний идентификатор клиента"
         );
+        this.externalOrderId = normalizeOptionalExternalId(
+                externalOrderId,
+                "Внешний идентификатор заказа"
+        );
         this.externalSubscriptionId = normalizeOptionalExternalId(
                 externalSubscriptionId,
                 "Внешний идентификатор подписки"
@@ -114,7 +140,16 @@ public class UserSubscription {
         validateProviderBinding(
                 this.provider,
                 this.externalCustomerId,
+                this.externalOrderId,
                 this.externalSubscriptionId
+        );
+        validateCommercialSnapshot(priceMinor, currency, billingPeriod);
+        this.priceMinor = priceMinor;
+        this.currency = currency;
+        this.billingPeriod = billingPeriod;
+        this.externalProductId = normalizeOptionalExternalId(
+                externalProductId,
+                "Внешний идентификатор продукта"
         );
 
         this.status = SubscriptionStatus.ACTIVE;
@@ -132,6 +167,11 @@ public class UserSubscription {
                 plan,
                 currentPeriodStart,
                 currentPeriodEnd,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null
@@ -154,7 +194,42 @@ public class UserSubscription {
                 currentPeriodEnd,
                 provider,
                 externalCustomerId,
-                externalSubscriptionId
+                null,
+                externalSubscriptionId,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public static UserSubscription providerManagedPurchase(
+            User user,
+            SubscriptionPlan plan,
+            Instant currentPeriodStart,
+            Instant currentPeriodEnd,
+            String provider,
+            String externalCustomerId,
+            String externalOrderId,
+            String externalSubscriptionId,
+            long priceMinor,
+            String currency,
+            BillingPeriod billingPeriod,
+            String externalProductId
+    ) {
+        return new UserSubscription(
+                user,
+                plan,
+                currentPeriodStart,
+                currentPeriodEnd,
+                provider,
+                externalCustomerId,
+                externalOrderId,
+                externalSubscriptionId,
+                priceMinor,
+                currency,
+                billingPeriod,
+                externalProductId
         );
     }
 
@@ -258,8 +333,28 @@ public class UserSubscription {
         return externalCustomerId;
     }
 
+    public String getExternalOrderId() {
+        return externalOrderId;
+    }
+
     public String getExternalSubscriptionId() {
         return externalSubscriptionId;
+    }
+
+    public Long getPriceMinor() {
+        return priceMinor;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public BillingPeriod getBillingPeriod() {
+        return billingPeriod;
+    }
+
+    public String getExternalProductId() {
+        return externalProductId;
     }
 
     public Instant getCreatedAt() {
@@ -290,6 +385,54 @@ public class UserSubscription {
         this.currentPeriodEnd = validatedPeriodEnd;
         this.status = SubscriptionStatus.ACTIVE;
         this.cancelAtPeriodEnd = false;
+    }
+
+    public void applySuccessfulRecurringCharge(
+            Instant newPeriodStart,
+            Instant newPeriodEnd
+    ) {
+        if (status == SubscriptionStatus.ACTIVE) {
+            renewPaidPeriod(newPeriodStart, newPeriodEnd);
+            return;
+        }
+        if (status == SubscriptionStatus.PAST_DUE) {
+            recoverAfterPayment(newPeriodStart, newPeriodEnd);
+            return;
+        }
+        throw new IllegalStateException(
+                "Успешное списание недоступно для завершённой подписки"
+        );
+    }
+
+    public void applyProviderCancellation() {
+        if (status == SubscriptionStatus.ACTIVE) {
+            cancelAtPeriodEnd = true;
+            return;
+        }
+        if (status == SubscriptionStatus.PAST_DUE) {
+            status = SubscriptionStatus.CANCELED;
+            cancelAtPeriodEnd = false;
+        }
+    }
+
+    public void revokeByProvider() {
+        if (status == SubscriptionStatus.ACTIVE
+                || status == SubscriptionStatus.PAST_DUE) {
+            status = SubscriptionStatus.CANCELED;
+            cancelAtPeriodEnd = false;
+        }
+    }
+
+    public boolean matchesCommercialSnapshot(
+            long amountMinor,
+            String paidCurrency,
+            BillingPeriod paidBillingPeriod
+    ) {
+        return priceMinor != null
+                && priceMinor == amountMinor
+                && currency != null
+                && currency.equals(paidCurrency)
+                && billingPeriod == paidBillingPeriod;
     }
 
     private void ensureActive() {
@@ -418,10 +561,12 @@ public class UserSubscription {
     private static void validateProviderBinding(
             String provider,
             String externalCustomerId,
+            String externalOrderId,
             String externalSubscriptionId
     ) {
         if (provider == null) {
             if (externalCustomerId != null
+                    || externalOrderId != null
                     || externalSubscriptionId != null) {
                 throw new IllegalArgumentException(
                         "Внешние идентификаторы требуют платёжного провайдера"
@@ -431,10 +576,31 @@ public class UserSubscription {
             return;
         }
 
-        if (externalSubscriptionId == null) {
+        if (externalOrderId == null && externalSubscriptionId == null) {
             throw new IllegalArgumentException(
-                    "Для платёжного провайдера требуется "
-                            + "внешний идентификатор подписки"
+                    "Для платёжного провайдера требуется внешний "
+                            + "идентификатор заказа или подписки"
+            );
+        }
+    }
+
+    private static void validateCommercialSnapshot(
+            Long priceMinor,
+            String currency,
+            BillingPeriod billingPeriod
+    ) {
+        boolean allMissing = priceMinor == null
+                && currency == null
+                && billingPeriod == null;
+        boolean allPresent = priceMinor != null
+                && priceMinor > 0
+                && currency != null
+                && currency.matches("^[A-Z]{3}$")
+                && billingPeriod != null;
+
+        if (!allMissing && !allPresent) {
+            throw new IllegalArgumentException(
+                    "Коммерческий снимок подписки заполнен некорректно"
             );
         }
     }

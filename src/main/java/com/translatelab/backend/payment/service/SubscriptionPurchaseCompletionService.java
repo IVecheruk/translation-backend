@@ -3,10 +3,13 @@ package com.translatelab.backend.payment.service;
 import com.translatelab.backend.payment.dto.SubscriptionPurchaseCompletionCommand;
 import com.translatelab.backend.payment.entity.SubscriptionPurchaseIntent;
 import com.translatelab.backend.payment.exception.SubscriptionPurchaseIntentNotFoundException;
+import com.translatelab.backend.payment.exception.InvalidPaymentConfirmationException;
 import com.translatelab.backend.payment.repository.ProcessedPaymentEventRepository;
 import com.translatelab.backend.payment.repository.SubscriptionPurchaseIntentRepository;
 import com.translatelab.backend.subscription.entity.UserSubscription;
 import com.translatelab.backend.subscription.repository.UserSubscriptionRepository;
+import com.translatelab.backend.user.repository.UserRepository;
+import com.translatelab.backend.user.exception.UserNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +27,20 @@ public class SubscriptionPurchaseCompletionService {
     private final ProcessedPaymentEventRepository paymentEventRepository;
     private final SubscriptionPurchaseIntentRepository intentRepository;
     private final UserSubscriptionRepository subscriptionRepository;
+    private final UserRepository userRepository;
     private final Clock clock;
 
     public SubscriptionPurchaseCompletionService(
             ProcessedPaymentEventRepository paymentEventRepository,
             SubscriptionPurchaseIntentRepository intentRepository,
             UserSubscriptionRepository subscriptionRepository,
+            UserRepository userRepository,
             Clock clock
     ) {
         this.paymentEventRepository = paymentEventRepository;
         this.intentRepository = intentRepository;
         this.subscriptionRepository = subscriptionRepository;
+        this.userRepository = userRepository;
         this.clock = clock;
     }
 
@@ -64,6 +70,19 @@ public class SubscriptionPurchaseCompletionService {
             );
         }
 
+        SubscriptionPurchaseIntent candidate = intentRepository
+                .findByProviderAndExternalCheckoutId(
+                        command.provider(),
+                        command.externalCheckoutId()
+                )
+                .orElseThrow(
+                        SubscriptionPurchaseIntentNotFoundException::new
+                );
+
+        UUID userId = candidate.getUser().getId();
+        userRepository.findByIdForUpdate(userId)
+                .orElseThrow(UserNotFoundException::new);
+
         SubscriptionPurchaseIntent intent = intentRepository
                 .findByProviderAndExternalCheckoutIdForUpdate(
                         command.provider(),
@@ -75,15 +94,40 @@ public class SubscriptionPurchaseCompletionService {
 
         Instant now = clock.instant();
 
+        if (!intent.matchesCommercialSnapshot(
+                command.paidAmountMinor(),
+                command.paidCurrency(),
+                command.paidBillingPeriod(),
+                command.paidExternalProductId()
+        )) {
+            throw new InvalidPaymentConfirmationException();
+        }
+
+        UserSubscription liveSubscription = subscriptionRepository
+                .findLiveByUserIdForUpdate(userId)
+                .orElse(null);
+        if (liveSubscription != null) {
+            if (now.isBefore(liveSubscription.getCurrentPeriodEnd())) {
+                throw new com.translatelab.backend.payment.exception
+                        .SubscriptionPurchaseConflictException();
+            }
+            liveSubscription.expire(now);
+        }
+
         UserSubscription subscription =
-                UserSubscription.providerManaged(
+                UserSubscription.providerManagedPurchase(
                         intent.getUser(),
                         intent.getPlan(),
                         command.periodStart(),
                         command.periodEnd(),
                         command.provider(),
                         command.externalCustomerId(),
-                        command.externalSubscriptionId()
+                        command.externalOrderId(),
+                        command.externalSubscriptionId(),
+                        command.paidAmountMinor(),
+                        command.paidCurrency(),
+                        command.paidBillingPeriod(),
+                        command.paidExternalProductId()
                 );
 
         intent.consume(now);

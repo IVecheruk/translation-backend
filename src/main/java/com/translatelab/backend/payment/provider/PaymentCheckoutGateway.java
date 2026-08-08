@@ -9,4 +9,10 @@ public interface PaymentCheckoutGateway {
     PaymentCheckoutResult createCheckout(
             PaymentCheckoutCreationCommand command
     );
+
+    default void cancelCheckout(String externalCheckoutId) {
+        throw new UnsupportedOperationException(
+                "Провайдер не поддерживает компенсационную отмену checkout"
+        );
+    }
 }

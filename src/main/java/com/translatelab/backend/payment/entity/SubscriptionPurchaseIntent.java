@@ -67,6 +67,19 @@ public class SubscriptionPurchaseIntent {
     @Column(name = "external_checkout_id", length = 255)
     private String externalCheckoutId;
 
+    @Column(name = "price_minor", updatable = false)
+    private Long priceMinor;
+
+    @Column(name = "currency", updatable = false, length = 3)
+    private String currency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_period", updatable = false, length = 16)
+    private BillingPeriod billingPeriod;
+
+    @Column(name = "external_product_id", updatable = false, length = 255)
+    private String externalProductId;
+
     @Column(name = "expires_at", nullable = false, updatable = false)
     private Instant expiresAt;
 
@@ -99,6 +112,10 @@ public class SubscriptionPurchaseIntent {
         this.offer = validateOffer(offer);
         this.plan = validatePlan(this.offer.getPlan());
         this.provider = validateProvider(this.offer.getProvider());
+        this.priceMinor = this.offer.getPriceMinor();
+        this.currency = this.offer.getCurrency();
+        this.billingPeriod = this.offer.getBillingPeriod();
+        this.externalProductId = this.offer.getExternalProductId();
         this.expiresAt = validateExpiresAt(
                 validatedNow,
                 expiresAt
@@ -208,6 +225,45 @@ public class SubscriptionPurchaseIntent {
 
     public Instant getExpiresAt() {
         return expiresAt;
+    }
+
+    public long getPriceMinor() {
+        if (priceMinor == null) {
+            throw new IllegalStateException("У заявки отсутствует снимок цены");
+        }
+        return priceMinor;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public BillingPeriod getBillingPeriod() {
+        return billingPeriod;
+    }
+
+    public String getExternalProductId() {
+        return externalProductId;
+    }
+
+    public boolean hasCommercialSnapshot() {
+        return priceMinor != null && currency != null && billingPeriod != null;
+    }
+
+    public boolean matchesCommercialSnapshot(
+            long paidAmountMinor,
+            String paidCurrency,
+            BillingPeriod paidBillingPeriod,
+            String paidExternalProductId
+    ) {
+        return hasCommercialSnapshot()
+                && priceMinor == paidAmountMinor
+                && currency.equals(paidCurrency)
+                && billingPeriod == paidBillingPeriod
+                && java.util.Objects.equals(
+                        externalProductId,
+                        paidExternalProductId
+                );
     }
 
     public Instant getConsumedAt() {

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 @Service
 public class SubscriptionPurchaseIntentCheckoutAttachmentService {
@@ -49,5 +50,17 @@ public class SubscriptionPurchaseIntentCheckoutAttachmentService {
                 command.externalCheckoutId(),
                 now
         );
+    }
+
+    @Transactional
+    public void abandon(UUID userId, UUID intentId) {
+        SubscriptionPurchaseIntent intent = intentRepository
+                .findByIdAndUserIdForUpdate(intentId, userId)
+                .orElseThrow(SubscriptionPurchaseIntentNotFoundException::new);
+        if (intent.getStatus()
+                == com.translatelab.backend.payment.entity
+                .SubscriptionPurchaseIntentStatus.PENDING) {
+            intent.cancel();
+        }
     }
 }
