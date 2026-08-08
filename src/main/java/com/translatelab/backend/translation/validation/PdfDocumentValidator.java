@@ -6,7 +6,6 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,13 +24,11 @@ public class PdfDocumentValidator implements DocumentFormatValidator {
     }
 
     @Override
-    public void validate(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new InvalidDocumentContentException();
-        }
-
+    public void validate(byte[] contentBytes) {
         try (
-                InputStream inputStream = file.getInputStream();
+                InputStream inputStream = new java.io.ByteArrayInputStream(
+                        contentBytes
+                );
                 RandomAccessReadBuffer content =
                         new RandomAccessReadBuffer(inputStream)
         ) {

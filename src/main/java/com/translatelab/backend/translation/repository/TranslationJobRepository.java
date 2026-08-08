@@ -24,6 +24,12 @@ public interface TranslationJobRepository extends JpaRepository<TranslationJob, 
             UUID userId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select job from TranslationJob job where job.id = :jobId")
+    Optional<TranslationJob> findByIdForUpdate(
+            @Param("jobId") UUID jobId
+    );
+
     Page<TranslationJob> findAllByUser_IdOrderByCreatedAtDesc(
             UUID userId,
             Pageable pageable

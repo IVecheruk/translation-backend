@@ -2,6 +2,7 @@ package com.translatelab.backend.translation.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.translatelab.backend.translation.entity.TranslationStatus;
+import com.translatelab.backend.translation.entity.TranslationErrorCode;
 
 import java.util.UUID;
 
@@ -13,6 +14,9 @@ public record DocumentStatusResponse(
         TranslationStatus status,
 
         int progress,
+
+        @JsonProperty("error_code")
+        TranslationErrorCode errorCode,
 
         @JsonProperty("error_message")
         String errorMessage

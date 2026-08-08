@@ -99,7 +99,8 @@ public class DocumentHistoryService {
                 job.getProgress(),
                 job.getCreatedAt(),
                 job.getUpdatedAt(),
-                job.getErrorMessage()
+                job.getErrorCode(),
+                job.getPublicErrorMessage()
         );
     }
 }

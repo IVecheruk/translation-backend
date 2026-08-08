@@ -19,7 +19,8 @@ class TranslationJobTest {
         assertEquals(TranslationStatus.PENDING, job.getStatus());
         assertEquals(0, job.getProgress());
         assertNull(job.getResultFileKey());
-        assertNull(job.getErrorMessage());
+        assertNull(job.getErrorDetail());
+        assertNull(job.getErrorCode());
         assertNull(job.getSourceDeletedAt());
         assertNull(job.getResultDeletedAt());
     }
@@ -49,12 +50,13 @@ class TranslationJobTest {
         TranslationJob job = createJob();
         job.startProcessing();
 
-        job.complete("results/result.docx");
+        job.complete();
 
         assertEquals(TranslationStatus.DONE, job.getStatus());
         assertEquals(100, job.getProgress());
         assertEquals("results/result.docx", job.getResultFileKey());
-        assertNull(job.getErrorMessage());
+        assertNull(job.getErrorDetail());
+        assertNull(job.getErrorCode());
     }
 
     @Test
@@ -63,7 +65,7 @@ class TranslationJobTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> job.complete("results/result.docx")
+                job::complete
         );
 
         assertEquals(TranslationStatus.PENDING, job.getStatus());
@@ -71,32 +73,35 @@ class TranslationJobTest {
     }
 
     @Test
-    void shouldRejectBlankResultFileKey() {
-        TranslationJob job = createJob();
-        job.startProcessing();
-
+    void shouldRejectBlankExpectedResultFileKey() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> job.complete("   ")
+                () -> new TranslationJob(
+                        new User("user@example.com", "password-hash"),
+                        "uploads/source.docx",
+                        "   ",
+                        "ru",
+                        "en",
+                        FileFormat.DOCX
+                )
         );
-
-        assertEquals(TranslationStatus.PROCESSING, job.getStatus());
-        assertNull(job.getResultFileKey());
     }
 
     @Test
-    void shouldRejectTooLongResultFileKey() {
-        TranslationJob job = createJob();
-        job.startProcessing();
+    void shouldRejectTooLongExpectedResultFileKey() {
         String tooLongResultFileKey = "a".repeat(1025);
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> job.complete(tooLongResultFileKey)
+                () -> new TranslationJob(
+                        new User("user@example.com", "password-hash"),
+                        "uploads/source.docx",
+                        tooLongResultFileKey,
+                        "ru",
+                        "en",
+                        FileFormat.DOCX
+                )
         );
-
-        assertEquals(TranslationStatus.PROCESSING, job.getStatus());
-        assertNull(job.getResultFileKey());
     }
 
     @Test
@@ -107,7 +112,11 @@ class TranslationJobTest {
 
         assertEquals(TranslationStatus.FAILED, job.getStatus());
         assertEquals(0, job.getProgress());
-        assertEquals("Ошибка загрузки файла", job.getErrorMessage());
+        assertEquals("Ошибка загрузки файла", job.getErrorDetail());
+        assertEquals(
+                TranslationErrorCode.TRANSLATION_FAILED,
+                job.getErrorCode()
+        );
         assertNull(job.getResultFileKey());
     }
 
@@ -121,8 +130,26 @@ class TranslationJobTest {
 
         assertEquals(TranslationStatus.FAILED, job.getStatus());
         assertEquals(47, job.getProgress());
-        assertEquals("Ошибка перевода", job.getErrorMessage());
+        assertEquals("Ошибка перевода", job.getErrorDetail());
         assertNull(job.getResultFileKey());
+    }
+
+    @Test
+    void shouldRejectDiagnosticDetailAboveDomainLimit() {
+        TranslationJob job = createJob();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> job.fail(
+                        "x".repeat(
+                                TranslationJob.MAX_ERROR_DETAIL_LENGTH + 1
+                        )
+                )
+        );
+
+        assertEquals(TranslationStatus.PENDING, job.getStatus());
+        assertNull(job.getErrorCode());
+        assertNull(job.getErrorDetail());
     }
 
     @Test
@@ -187,7 +214,7 @@ class TranslationJobTest {
     void shouldNotFailCompletedJob() {
         TranslationJob job = createJob();
         job.startProcessing();
-        job.complete("results/result.docx");
+        job.complete();
 
         assertThrows(
                 IllegalStateException.class,
@@ -196,14 +223,14 @@ class TranslationJobTest {
 
         assertEquals(TranslationStatus.DONE, job.getStatus());
         assertEquals("results/result.docx", job.getResultFileKey());
-        assertNull(job.getErrorMessage());
+        assertNull(job.getErrorDetail());
     }
 
     @Test
     void shouldMarkTerminalFilesDeletedIdempotently() {
         TranslationJob job = createJob();
         job.startProcessing();
-        job.complete("results/result.docx");
+        job.complete();
         Instant first = Instant.parse("2026-08-08T06:00:00Z");
 
         job.markSourceDeleted(first);
@@ -233,6 +260,7 @@ class TranslationJobTest {
         return new TranslationJob(
                 user,
                 "uploads/source.docx",
+                "results/result.docx",
                 "ru",
                 "en",
                 FileFormat.DOCX

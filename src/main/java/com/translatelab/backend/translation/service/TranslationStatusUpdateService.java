@@ -5,6 +5,7 @@ import com.translatelab.backend.messaging.exception.InvalidTranslationStatusMess
 import com.translatelab.backend.translation.entity.TranslationJob;
 import com.translatelab.backend.translation.entity.TranslationStatus;
 import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
+import com.translatelab.backend.translation.exception.InvalidDocumentContentException;
 import com.translatelab.backend.translation.repository.TranslationJobRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,11 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class TranslationStatusUpdateService {
 
     private final TranslationJobRepository translationJobRepository;
+    private final ResultDocumentValidationService resultValidationService;
 
     public TranslationStatusUpdateService(
-            TranslationJobRepository translationJobRepository
+            TranslationJobRepository translationJobRepository,
+            ResultDocumentValidationService resultValidationService
     ) {
         this.translationJobRepository = translationJobRepository;
+        this.resultValidationService = resultValidationService;
     }
 
     @Transactional
@@ -25,7 +29,7 @@ public class TranslationStatusUpdateService {
         validateCommonFields(message);
 
         TranslationJob job = translationJobRepository
-                .findById(message.jobId())
+                .findByIdForUpdate(message.jobId())
                 .orElseThrow(TranslationJobNotFoundException::new);
 
         switch (message.status()) {
@@ -86,12 +90,15 @@ public class TranslationStatusUpdateService {
                 "error_message должен отсутствовать для статуса DONE"
         );
 
+        if (!job.getExpectedResultFileKey().equals(
+                message.resultFileKey()
+        )) {
+            throw invalid(
+                    "result_file_key не соответствует ожидаемому ключу задания"
+            );
+        }
+
         if (job.getStatus() == TranslationStatus.DONE) {
-            if (!job.getResultFileKey().equals(message.resultFileKey())) {
-                throw invalid(
-                        "Повторное сообщение DONE содержит другой result_file_key"
-                );
-            }
             return;
         }
 
@@ -102,10 +109,13 @@ public class TranslationStatusUpdateService {
         }
 
         if (job.getStatus() == TranslationStatus.PENDING) {
+            validateResult(job);
             job.startProcessing();
+        } else {
+            validateResult(job);
         }
 
-        job.complete(message.resultFileKey());
+        job.complete();
     }
 
     private void fail(
@@ -181,6 +191,19 @@ public class TranslationStatusUpdateService {
     private boolean isTerminal(TranslationStatus status) {
         return status == TranslationStatus.DONE
                 || status == TranslationStatus.FAILED;
+    }
+
+    private void validateResult(TranslationJob job) {
+        try {
+            resultValidationService.validate(
+                    job.getExpectedResultFileKey(),
+                    job.getFileFormat()
+            );
+        } catch (InvalidDocumentContentException exception) {
+            throw invalid(
+                    "Результат перевода отсутствует или имеет неверный формат"
+            );
+        }
     }
 
     private InvalidTranslationStatusMessageException invalid(

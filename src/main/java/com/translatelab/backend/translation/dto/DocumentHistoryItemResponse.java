@@ -3,6 +3,7 @@ package com.translatelab.backend.translation.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.translatelab.backend.translation.entity.FileFormat;
 import com.translatelab.backend.translation.entity.TranslationStatus;
+import com.translatelab.backend.translation.entity.TranslationErrorCode;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -29,6 +30,9 @@ public record DocumentHistoryItemResponse(
 
         @JsonProperty("updated_at")
         Instant updatedAt,
+
+        @JsonProperty("error_code")
+        TranslationErrorCode errorCode,
 
         @JsonProperty("error_message")
         String errorMessage

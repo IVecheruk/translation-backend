@@ -12,6 +12,8 @@ import java.util.UUID;
 @Table(name = "translation_jobs")
 public class TranslationJob {
 
+    public static final int MAX_ERROR_DETAIL_LENGTH = 2000;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -25,6 +27,9 @@ public class TranslationJob {
 
     @Column(name = "result_file_key", nullable = true, length = 1024)
     private String resultFileKey;
+
+    @Column(name = "expected_result_file_key", nullable = false, length = 1024)
+    private String expectedResultFileKey;
 
     @Column(name = "source_lang", nullable = false, length = 16)
     private String sourceLang;
@@ -51,8 +56,12 @@ public class TranslationJob {
     @UpdateTimestamp
     private Instant updatedAt;
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
-    private String errorMessage;
+    @Column(name = "error_code", length = 64)
+    @Enumerated(EnumType.STRING)
+    private TranslationErrorCode errorCode;
+
+    @Column(name = "error_message", length = 2000)
+    private String errorDetail;
 
     @Column(name = "source_deleted_at")
     private Instant sourceDeletedAt;
@@ -65,12 +74,17 @@ public class TranslationJob {
     public TranslationJob(
         User user,
         String sourceFileKey,
+        String expectedResultFileKey,
         String sourceLang,
         String targetLang,
         FileFormat fileFormat
     ) {
         this.user = user;
         this.sourceFileKey = sourceFileKey;
+        this.expectedResultFileKey = requireStorageKey(
+                expectedResultFileKey,
+                "Ожидаемый ключ результата"
+        );
         this.sourceLang = sourceLang;
         this.targetLang = targetLang;
         this.status = TranslationStatus.PENDING;
@@ -92,6 +106,10 @@ public class TranslationJob {
 
     public String getResultFileKey() {
         return resultFileKey;
+    }
+
+    public String getExpectedResultFileKey() {
+        return expectedResultFileKey;
     }
 
     public String getSourceLang() {
@@ -122,8 +140,16 @@ public class TranslationJob {
         return updatedAt;
     }
 
-    public String getErrorMessage() {
-        return errorMessage;
+    public TranslationErrorCode getErrorCode() {
+        return errorCode;
+    }
+
+    public String getErrorDetail() {
+        return errorDetail;
+    }
+
+    public String getPublicErrorMessage() {
+        return errorCode == null ? null : errorCode.publicMessage();
     }
 
     public Instant getSourceDeletedAt() {
@@ -184,32 +210,21 @@ public class TranslationJob {
         this.progress = 0;
     }
 
-    public void complete(String resultFileKey) {
+    public void complete() {
         if (this.status != TranslationStatus.PROCESSING) {
             throw new IllegalStateException(
               "Завершить можно только задание со статусом PROCESSING"
             );
         }
 
-        if (resultFileKey == null || resultFileKey.isBlank()) {
-            throw new IllegalArgumentException(
-              "Ключ результирующего файла не должен быть пустым"
-            );
-        }
-
-        if (resultFileKey.length() > 1024) {
-            throw new IllegalArgumentException(
-              "Ключ результирующего файла не должен превышать 1024 символа"
-            );
-        }
-
-        this.resultFileKey = resultFileKey;
-        this.errorMessage = null;
+        this.resultFileKey = expectedResultFileKey;
+        this.errorCode = null;
+        this.errorDetail = null;
         this.progress = 100;
         this.status = TranslationStatus.DONE;
     }
 
-    public void fail(String errorMessage) {
+    public void fail(String errorDetail) {
         if (this.status != TranslationStatus.PENDING
                 && this.status != TranslationStatus.PROCESSING) {
             throw new IllegalStateException(
@@ -217,14 +232,24 @@ public class TranslationJob {
             );
         }
 
-        if (errorMessage == null || errorMessage.isBlank()) {
+        if (errorDetail == null || errorDetail.isBlank()) {
             throw new IllegalArgumentException(
               "Сообщение об ошибке не должно быть пустым"
             );
         }
 
+        String normalizedErrorDetail = errorDetail.strip();
+        if (normalizedErrorDetail.length() > MAX_ERROR_DETAIL_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Диагностическое сообщение не должно превышать "
+                            + MAX_ERROR_DETAIL_LENGTH
+                            + " символов"
+            );
+        }
+
         this.resultFileKey = null;
-        this.errorMessage = errorMessage.strip();
+        this.errorCode = TranslationErrorCode.TRANSLATION_FAILED;
+        this.errorDetail = normalizedErrorDetail;
         this.status = TranslationStatus.FAILED;
     }
 
@@ -250,5 +275,19 @@ public class TranslationJob {
         }
 
         this.progress = progress;
+    }
+
+    private String requireStorageKey(String key, String fieldName) {
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException(
+                    fieldName + " не должен быть пустым"
+            );
+        }
+        if (key.length() > 1024) {
+            throw new IllegalArgumentException(
+                    fieldName + " не должен превышать 1024 символа"
+            );
+        }
+        return key;
     }
 }

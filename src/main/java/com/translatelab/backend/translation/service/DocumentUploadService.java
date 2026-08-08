@@ -108,6 +108,10 @@ public class DocumentUploadService {
                 userId,
                 fileFormat
         );
+        String resultObjectKey = storageKeyGenerator.generateResultFileKey(
+                userId,
+                fileFormat
+        );
 
         UUID reservationId = usageLimitService.reserve(
                 userId,
@@ -123,6 +127,7 @@ public class DocumentUploadService {
             savedJob = saveJob(
                     user,
                     objectKey,
+                    resultObjectKey,
                     normalizedSourceLang,
                     normalizedTargetLang,
                     fileFormat
@@ -132,6 +137,7 @@ public class DocumentUploadService {
                     new TranslationTaskMessage(
                             savedJob.getId(),
                             savedJob.getSourceFileKey(),
+                            savedJob.getExpectedResultFileKey(),
                             savedJob.getSourceLang(),
                             savedJob.getTargetLang(),
                             savedJob.getFileFormat()
@@ -235,6 +241,7 @@ public class DocumentUploadService {
     private TranslationJob saveJob(
             User user,
             String objectKey,
+            String resultObjectKey,
             String sourceLang,
             String targetLang,
             FileFormat fileFormat
@@ -243,6 +250,7 @@ public class DocumentUploadService {
             TranslationJob job = new TranslationJob(
                     user,
                     objectKey,
+                    resultObjectKey,
                     sourceLang,
                     targetLang,
                     fileFormat

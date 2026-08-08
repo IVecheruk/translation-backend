@@ -13,6 +13,9 @@ public record TranslationTaskMessage(
         @JsonProperty("file_key")
         String fileKey,
 
+        @JsonProperty("result_file_key")
+        String resultFileKey,
+
         @JsonProperty("source_lang")
         String sourceLang,
 

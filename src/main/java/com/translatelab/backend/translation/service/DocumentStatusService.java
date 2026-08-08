@@ -44,7 +44,8 @@ public class DocumentStatusService {
                 job.getId(),
                 job.getStatus(),
                 job.getProgress(),
-                job.getErrorMessage()
+                job.getErrorCode(),
+                job.getPublicErrorMessage()
         );
     }
 }
