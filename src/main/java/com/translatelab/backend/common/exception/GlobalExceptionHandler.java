@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.time.Instant;
@@ -378,6 +379,22 @@ public class GlobalExceptionHandler {
         return buildResponse(
                 HttpStatus.UNAUTHORIZED,
                 exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler({
+            DocumentTooLargeException.class,
+            MaxUploadSizeExceededException.class
+    })
+    public ResponseEntity<ApiError> handleDocumentTooLarge(
+            RuntimeException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.CONTENT_TOO_LARGE,
+                "Размер документа превышает максимально допустимый",
                 request.getRequestURI(),
                 Map.of()
         );

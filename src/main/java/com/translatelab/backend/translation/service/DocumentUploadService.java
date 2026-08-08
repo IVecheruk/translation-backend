@@ -1,5 +1,6 @@
 package com.translatelab.backend.translation.service;
 
+import com.translatelab.backend.config.DocumentUploadProperties;
 import com.translatelab.backend.messaging.dto.TranslationTaskMessage;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.messaging.publisher.TranslationTaskPublisher;
@@ -8,6 +9,7 @@ import com.translatelab.backend.storage.service.StorageService;
 import com.translatelab.backend.translation.dto.DocumentUploadResponse;
 import com.translatelab.backend.translation.entity.FileFormat;
 import com.translatelab.backend.translation.entity.TranslationJob;
+import com.translatelab.backend.translation.exception.DocumentTooLargeException;
 import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
 import com.translatelab.backend.translation.repository.TranslationJobRepository;
 import com.translatelab.backend.usage.service.UsageLimitService;
@@ -38,6 +40,7 @@ public class DocumentUploadService {
     private final StorageService storageService;
     private final TranslationTaskPublisher translationTaskPublisher;
     private final UsageLimitService usageLimitService;
+    private final DocumentUploadProperties documentUploadProperties;
 
     public DocumentUploadService(
             UserRepository userRepository,
@@ -46,7 +49,8 @@ public class DocumentUploadService {
             StorageKeyGenerator storageKeyGenerator,
             StorageService storageService,
             TranslationTaskPublisher translationTaskPublisher,
-            UsageLimitService usageLimitService
+            UsageLimitService usageLimitService,
+            DocumentUploadProperties documentUploadProperties
     ) {
         this.userRepository = userRepository;
         this.translationJobRepository = translationJobRepository;
@@ -55,6 +59,7 @@ public class DocumentUploadService {
         this.storageService = storageService;
         this.translationTaskPublisher = translationTaskPublisher;
         this.usageLimitService = usageLimitService;
+        this.documentUploadProperties = documentUploadProperties;
     }
 
     public DocumentUploadResponse upload(
@@ -154,6 +159,10 @@ public class DocumentUploadService {
             throw new InvalidDocumentUploadException(
                     "Файл не должен быть пустым"
             );
+        }
+
+        if (file.getSize() > documentUploadProperties.maxFileSize().toBytes()) {
+            throw new DocumentTooLargeException();
         }
     }
 
