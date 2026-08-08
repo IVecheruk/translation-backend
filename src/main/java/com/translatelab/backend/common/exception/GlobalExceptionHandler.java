@@ -189,6 +189,19 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(TranslationResultExpiredException.class)
+    public ResponseEntity<ApiError> handleTranslationResultExpired(
+            TranslationResultExpiredException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.GONE,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
     @ExceptionHandler(InvalidPaginationException.class)
     public ResponseEntity<ApiError> handleInvalidPaginationException(
             InvalidPaginationException exception,

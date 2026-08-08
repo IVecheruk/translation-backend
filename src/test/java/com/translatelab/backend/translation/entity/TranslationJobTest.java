@@ -3,6 +3,8 @@ package com.translatelab.backend.translation.entity;
 import com.translatelab.backend.user.entity.User;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -18,6 +20,8 @@ class TranslationJobTest {
         assertEquals(0, job.getProgress());
         assertNull(job.getResultFileKey());
         assertNull(job.getErrorMessage());
+        assertNull(job.getSourceDeletedAt());
+        assertNull(job.getResultDeletedAt());
     }
 
     @Test
@@ -193,6 +197,34 @@ class TranslationJobTest {
         assertEquals(TranslationStatus.DONE, job.getStatus());
         assertEquals("results/result.docx", job.getResultFileKey());
         assertNull(job.getErrorMessage());
+    }
+
+    @Test
+    void shouldMarkTerminalFilesDeletedIdempotently() {
+        TranslationJob job = createJob();
+        job.startProcessing();
+        job.complete("results/result.docx");
+        Instant first = Instant.parse("2026-08-08T06:00:00Z");
+
+        job.markSourceDeleted(first);
+        job.markSourceDeleted(first.plusSeconds(1));
+        job.markResultDeleted(first);
+        job.markResultDeleted(first.plusSeconds(1));
+
+        assertEquals(first, job.getSourceDeletedAt());
+        assertEquals(first, job.getResultDeletedAt());
+    }
+
+    @Test
+    void shouldNeverMarkActiveSourceDeleted() {
+        TranslationJob job = createJob();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> job.markSourceDeleted(Instant.now())
+        );
+
+        assertNull(job.getSourceDeletedAt());
     }
 
     private TranslationJob createJob() {

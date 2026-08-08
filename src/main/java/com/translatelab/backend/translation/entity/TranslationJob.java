@@ -54,6 +54,12 @@ public class TranslationJob {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @Column(name = "source_deleted_at")
+    private Instant sourceDeletedAt;
+
+    @Column(name = "result_deleted_at")
+    private Instant resultDeletedAt;
+
     protected TranslationJob(){}
 
     public TranslationJob(
@@ -118,6 +124,53 @@ public class TranslationJob {
 
     public String getErrorMessage() {
         return errorMessage;
+    }
+
+    public Instant getSourceDeletedAt() {
+        return sourceDeletedAt;
+    }
+
+    public Instant getResultDeletedAt() {
+        return resultDeletedAt;
+    }
+
+    public void markSourceDeleted(Instant deletedAt) {
+        if (status != TranslationStatus.DONE
+                && status != TranslationStatus.FAILED) {
+            throw new IllegalStateException(
+                    "Исходный файл активного задания удалять нельзя"
+            );
+        }
+
+        if (deletedAt == null) {
+            throw new IllegalArgumentException(
+                    "Время удаления исходного файла не должно быть null"
+            );
+        }
+
+        if (sourceDeletedAt == null) {
+            sourceDeletedAt = deletedAt;
+        }
+    }
+
+    public void markResultDeleted(Instant deletedAt) {
+        if (status != TranslationStatus.DONE
+                || resultFileKey == null
+                || resultFileKey.isBlank()) {
+            throw new IllegalStateException(
+                    "Удалить результат можно только у завершенного задания"
+            );
+        }
+
+        if (deletedAt == null) {
+            throw new IllegalArgumentException(
+                    "Время удаления результата не должно быть null"
+            );
+        }
+
+        if (resultDeletedAt == null) {
+            resultDeletedAt = deletedAt;
+        }
     }
 
     public void startProcessing() {

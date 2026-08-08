@@ -2,11 +2,11 @@ package com.translatelab.backend.translation.service;
 
 import com.translatelab.backend.storage.service.StorageService;
 import com.translatelab.backend.translation.dto.DocumentDownloadResult;
-import com.translatelab.backend.translation.entity.FileFormat;
 import com.translatelab.backend.translation.entity.TranslationJob;
 import com.translatelab.backend.translation.entity.TranslationStatus;
 import com.translatelab.backend.translation.exception.TranslationJobNotFoundException;
 import com.translatelab.backend.translation.exception.TranslationResultNotReadyException;
+import com.translatelab.backend.translation.exception.TranslationResultExpiredException;
 import com.translatelab.backend.translation.repository.TranslationJobRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +52,10 @@ public class DocumentDownloadService {
             throw new TranslationResultNotReadyException();
         }
 
+        if (job.getResultDeletedAt() != null) {
+            throw new TranslationResultExpiredException();
+        }
+
         String resultFileKey = Objects.requireNonNull(
                 job.getResultFileKey(),
                 "Ключ результата завершенного задания не должен быть null"
@@ -64,9 +68,7 @@ public class DocumentDownloadService {
                 + "."
                 + job.getFileFormat().jsonValue();
 
-        String contentType = resolveContentType(
-                job.getFileFormat()
-        );
+        String contentType = job.getFileFormat().contentType();
 
         return new DocumentDownloadResult(
                 inputStream,
@@ -75,13 +77,4 @@ public class DocumentDownloadService {
         );
     }
 
-    private String resolveContentType(FileFormat format) {
-        return switch (format) {
-            case DOCX ->
-                    "application/vnd.openxmlformats-officedocument"
-                            + ".wordprocessingml.document";
-            case DOC -> "application/msword";
-            case PDF -> "application/pdf";
-        };
-    }
 }

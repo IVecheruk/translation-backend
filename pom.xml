@@ -30,6 +30,8 @@
 		<java.version>21</java.version>
 		<postgresql.version>42.7.13</postgresql.version>
 		<netty.version>4.2.16.Final</netty.version>
+		<poi.version>5.5.1</poi.version>
+		<pdfbox.version>3.0.8</pdfbox.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -71,6 +73,21 @@
 		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>${poi.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-scratchpad</artifactId>
+			<version>${poi.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>${pdfbox.version}</version>
 		</dependency>
 
 		<dependency>

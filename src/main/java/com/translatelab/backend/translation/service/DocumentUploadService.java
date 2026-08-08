@@ -12,6 +12,7 @@ import com.translatelab.backend.translation.entity.TranslationJob;
 import com.translatelab.backend.translation.exception.DocumentTooLargeException;
 import com.translatelab.backend.translation.exception.InvalidDocumentUploadException;
 import com.translatelab.backend.translation.repository.TranslationJobRepository;
+import com.translatelab.backend.translation.validation.DocumentContentValidator;
 import com.translatelab.backend.usage.service.UsageLimitService;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
@@ -41,6 +42,7 @@ public class DocumentUploadService {
     private final TranslationTaskPublisher translationTaskPublisher;
     private final UsageLimitService usageLimitService;
     private final DocumentUploadProperties documentUploadProperties;
+    private final DocumentContentValidator documentContentValidator;
 
     public DocumentUploadService(
             UserRepository userRepository,
@@ -50,7 +52,8 @@ public class DocumentUploadService {
             StorageService storageService,
             TranslationTaskPublisher translationTaskPublisher,
             UsageLimitService usageLimitService,
-            DocumentUploadProperties documentUploadProperties
+            DocumentUploadProperties documentUploadProperties,
+            DocumentContentValidator documentContentValidator
     ) {
         this.userRepository = userRepository;
         this.translationJobRepository = translationJobRepository;
@@ -60,6 +63,7 @@ public class DocumentUploadService {
         this.translationTaskPublisher = translationTaskPublisher;
         this.usageLimitService = usageLimitService;
         this.documentUploadProperties = documentUploadProperties;
+        this.documentContentValidator = documentContentValidator;
     }
 
     public DocumentUploadResponse upload(
@@ -91,12 +95,14 @@ public class DocumentUploadService {
             );
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(UserNotFoundException::new);
-
         FileFormat fileFormat = fileFormatResolver.resolve(
                 file.getOriginalFilename()
         );
+
+        documentContentValidator.validate(file, fileFormat);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(UserNotFoundException::new);
 
         String objectKey = storageKeyGenerator.generateSourceFileKey(
                 userId,
@@ -112,7 +118,7 @@ public class DocumentUploadService {
         TranslationJob savedJob;
 
         try {
-            uploadFile(file, objectKey);
+            uploadFile(file, objectKey, fileFormat);
 
             savedJob = saveJob(
                     user,
@@ -196,7 +202,8 @@ public class DocumentUploadService {
 
     private void uploadFile(
             MultipartFile file,
-            String objectKey
+            String objectKey,
+            FileFormat fileFormat
     ) {
         boolean uploadCompleted = false;
 
@@ -205,7 +212,7 @@ public class DocumentUploadService {
                     objectKey,
                     inputStream,
                     file.getSize(),
-                    file.getContentType()
+                    fileFormat.contentType()
             );
 
             uploadCompleted = true;

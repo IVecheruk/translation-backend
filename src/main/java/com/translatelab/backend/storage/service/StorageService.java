@@ -2,13 +2,18 @@ package com.translatelab.backend.storage.service;
 
 import com.translatelab.backend.config.StorageProperties;
 import com.translatelab.backend.storage.exception.StorageException;
+import com.translatelab.backend.storage.dto.StoredObjectInfo;
 import io.minio.GetObjectArgs;
+import io.minio.ListObjectsArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Service
@@ -124,6 +129,65 @@ public class StorageService {
             throw new StorageException(
                     "Не удалось скачать файл из MinIO: "
                     + objectKey,
+                    exception
+            );
+        }
+    }
+
+    public List<StoredObjectInfo> listOlderThan(
+            String prefix,
+            Instant cutoff,
+            int limit
+    ) {
+        if (prefix == null || prefix.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Префикс объектов не должен быть пустым"
+            );
+        }
+        Objects.requireNonNull(
+                cutoff,
+                "Граница времени объектов не должна быть null"
+        );
+        if (limit <= 0) {
+            throw new IllegalArgumentException(
+                    "Лимит списка объектов должен быть положительным"
+            );
+        }
+
+        List<StoredObjectInfo> objects = new ArrayList<>(limit);
+
+        try {
+            var results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(storageProperties.bucket())
+                            .prefix(prefix)
+                            .recursive(true)
+                            .build()
+            );
+
+            for (var result : results) {
+                var item = result.get();
+                if (item.isDir()) {
+                    continue;
+                }
+
+                Instant lastModified = item.lastModified().toInstant();
+                if (!lastModified.isAfter(cutoff)) {
+                    objects.add(new StoredObjectInfo(
+                            item.objectName(),
+                            lastModified
+                    ));
+                }
+
+                if (objects.size() == limit) {
+                    break;
+                }
+            }
+
+            return List.copyOf(objects);
+        } catch (Exception exception) {
+            throw new StorageException(
+                    "Не удалось получить список объектов MinIO",
                     exception
             );
         }
