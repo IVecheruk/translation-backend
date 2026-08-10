@@ -3,6 +3,7 @@ package com.translatelab.backend.auth.service;
 import com.translatelab.backend.auth.dto.RegisterRequest;
 import com.translatelab.backend.auth.dto.RegisterResponse;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
+import com.translatelab.backend.auth.entity.AccountActionTokenType;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.entity.UserProfile;
 import com.translatelab.backend.user.repository.UserProfileRepository;
@@ -40,6 +41,9 @@ class RegistrationServiceTest {
     @Mock
     private UserProfileRepository userProfileRepository;
 
+    @Mock
+    private AccountActionTokenIssuer tokenIssuer;
+
     @InjectMocks
     private RegistrationService registrationService;
 
@@ -61,7 +65,7 @@ class RegistrationServiceTest {
                 .willReturn(false);
         given(passwordEncoder.encode("password123"))
                 .willReturn("hashed-password");
-        given(userRepository.save(any(User.class)))
+        given(userRepository.saveAndFlush(any(User.class)))
                 .willReturn(savedUser);
 
         given(savedUser.getId()).willReturn(userId);
@@ -80,9 +84,13 @@ class RegistrationServiceTest {
         verify(passwordEncoder)
                 .encode("password123");
         verify(userRepository)
-                .save(userCaptor.capture());
+                .saveAndFlush(userCaptor.capture());
         verify(userProfileRepository)
-                .save(profileCaptor.capture());
+                .saveAndFlush(profileCaptor.capture());
+        verify(tokenIssuer).issue(
+                savedUser,
+                AccountActionTokenType.EMAIL_VERIFICATION
+        );
 
         User userPassedToRepository = userCaptor.getValue();
         UserProfile profilePassedToRepository = profileCaptor.getValue();
@@ -125,9 +133,10 @@ class RegistrationServiceTest {
         verify(userRepository)
                 .existsByEmail("user@example.com");
         verify(userRepository, never())
-                .save(any(User.class));
+                .saveAndFlush(any(User.class));
         verifyNoInteractions(passwordEncoder);
         verifyNoInteractions(userProfileRepository);
+        verifyNoInteractions(tokenIssuer);
         verifyNoMoreInteractions(userRepository);
     }
 }

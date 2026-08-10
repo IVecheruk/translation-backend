@@ -1,6 +1,7 @@
 package com.translatelab.backend.common.security;
 
 import com.translatelab.backend.common.exception.ApiError;
+import com.translatelab.backend.common.web.CorrelationIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -67,7 +68,8 @@ public class RestSecurityErrorHandler implements
                 status.value(),
                 message,
                 request.getRequestURI(),
-                Map.of()
+                Map.of(),
+                CorrelationIdContext.currentOrCreate()
         );
 
         response.setStatus(status.value());

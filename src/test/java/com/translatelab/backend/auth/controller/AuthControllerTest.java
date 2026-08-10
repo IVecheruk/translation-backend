@@ -8,6 +8,9 @@ import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.auth.service.LoginService;
 import com.translatelab.backend.auth.service.RegistrationService;
+import com.translatelab.backend.auth.service.AccountRecoveryService;
+import com.translatelab.backend.auth.service.SessionRevocationService;
+import com.translatelab.backend.auth.security.LoginAttemptLimiter;
 import com.translatelab.backend.common.exception.GlobalExceptionHandler;
 import com.translatelab.backend.common.security.RestSecurityErrorHandler;
 import com.translatelab.backend.config.SecurityConfig;
@@ -29,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -50,6 +54,15 @@ class AuthControllerTest {
 
     @MockitoBean
     private LoginService loginService;
+
+    @MockitoBean
+    private AccountRecoveryService accountRecoveryService;
+
+    @MockitoBean
+    private SessionRevocationService sessionRevocationService;
+
+    @MockitoBean
+    private LoginAttemptLimiter loginAttemptLimiter;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
@@ -196,6 +209,10 @@ class AuthControllerTest {
                         "password123"
                 )
         );
+        verify(loginAttemptLimiter).check(
+                "user@example.com",
+                "127.0.0.1"
+        );
     }
 
     @Test
@@ -277,5 +294,65 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.fieldErrors").isEmpty());
 
         verify(jwtDecoder).decode("invalid-token");
+    }
+
+    @Test
+    void shouldReturnGenericAcceptedForPasswordResetRequest() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"unknown@example.com"}
+                                """))
+                .andExpect(status().isAccepted());
+
+        verify(accountRecoveryService)
+                .requestPasswordReset("unknown@example.com");
+    }
+
+    @Test
+    void shouldConfirmEmailWithoutReturningTokenData() throws Exception {
+        String token = "0123456789012345678901234567890123456789012";
+
+        mockMvc.perform(post("/api/auth/email-verification/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"%s"}
+                                """.formatted(token)))
+                .andExpect(status().isNoContent());
+
+        verify(accountRecoveryService).confirmEmail(token);
+    }
+
+    @Test
+    void shouldResetPasswordWithoutReturningSensitiveData() throws Exception {
+        String token = "0123456789012345678901234567890123456789012";
+
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "token":"%s",
+                                  "password":"new-password"
+                                }
+                                """.formatted(token)))
+                .andExpect(status().isNoContent());
+
+        verify(accountRecoveryService)
+                .resetPassword(token, "new-password");
+    }
+
+    @Test
+    void shouldRevokeAllSessionsForAuthenticatedAccount() throws Exception {
+        UUID userId = UUID.fromString(
+                "9c2ad070-a91c-4b4d-99e1-bec77130c49d"
+        );
+
+        mockMvc.perform(post("/api/auth/logout-all")
+                        .with(jwt().jwt(token -> token.subject(
+                                userId.toString()
+                        ))))
+                .andExpect(status().isNoContent());
+
+        verify(sessionRevocationService).revokeAll(userId);
     }
 }

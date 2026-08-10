@@ -26,4 +26,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByIdForUpdate(
             @Param("userId") UUID userId
     );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT user
+            FROM User user
+            WHERE user.email = :email
+            """)
+    Optional<User> findByEmailForUpdate(@Param("email") String email);
 }

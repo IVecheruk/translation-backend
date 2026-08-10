@@ -2,6 +2,8 @@ package com.translatelab.backend.common.exception;
 
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
+import com.translatelab.backend.auth.exception.InvalidAccountActionTokenException;
+import com.translatelab.backend.common.web.CorrelationIdContext;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
 import com.translatelab.backend.payment.exception.PaymentProviderUnavailableException;
 import com.translatelab.backend.payment.exception.InvalidPaymentConfirmationException;
@@ -30,9 +32,12 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -187,6 +192,32 @@ public class GlobalExceptionHandler {
     ) {
         return buildResponse(
                 HttpStatus.CONFLICT,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiError> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "Неподдерживаемый тип содержимого запроса",
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(InvalidAccountActionTokenException.class)
+    public ResponseEntity<ApiError> handleInvalidAccountActionToken(
+            InvalidAccountActionTokenException exception,
+            HttpServletRequest request
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
                 exception.getMessage(),
                 request.getRequestURI(),
                 Map.of()
@@ -469,6 +500,69 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataConflict(
+            DataIntegrityViolationException exception,
+            HttpServletRequest request
+    ) {
+        LOGGER.warn(
+                "Конфликт целостности данных при обработке запроса {}",
+                request.getRequestURI()
+        );
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "Запрос конфликтует с текущим состоянием данных",
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(RequestRateLimitExceededException.class)
+    public ResponseEntity<ApiError> handleRequestRateLimitExceeded(
+            RequestRateLimitExceededException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(
+                        HttpHeaders.RETRY_AFTER,
+                        Long.toString(exception.getRetryAfterSeconds())
+                )
+                .body(new ApiError(
+                        Instant.now(),
+                        HttpStatus.TOO_MANY_REQUESTS.value(),
+                        exception.getMessage(),
+                        request.getRequestURI(),
+                        Map.of(),
+                        CorrelationIdContext.currentOrCreate()
+                ));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleUnexpected(
+            Exception exception,
+            HttpServletRequest request
+    ) {
+        String correlationId = CorrelationIdContext.currentOrCreate();
+        LOGGER.error(
+                "Непредвиденная ошибка при обработке запроса {}, correlationId={}",
+                request.getRequestURI(),
+                correlationId,
+                exception
+        );
+        ApiError apiError = new ApiError(
+                Instant.now(),
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Внутренняя ошибка сервера",
+                request.getRequestURI(),
+                Map.of(),
+                correlationId
+        );
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(apiError);
+    }
+
     private ResponseEntity<ApiError> buildResponse(
             HttpStatus status,
             String message,
@@ -480,7 +574,8 @@ public class GlobalExceptionHandler {
                 status.value(),
                 message,
                 path,
-                fieldErrors
+                fieldErrors,
+                CorrelationIdContext.currentOrCreate()
         );
 
         return ResponseEntity

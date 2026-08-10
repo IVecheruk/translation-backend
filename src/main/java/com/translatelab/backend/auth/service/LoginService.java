@@ -16,6 +16,8 @@ import java.util.Locale;
 public class LoginService {
 
     private static final String TOKEN_TYPE = "Bearer";
+    private static final String DUMMY_PASSWORD_HASH =
+            "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20zMPSb8ukP1vN2bBJgaFyATqyo54fO";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -36,14 +38,13 @@ public class LoginService {
                 .strip()
                 .toLowerCase(Locale.ROOT);
 
-        User user = userRepository
-                .findByEmail(email)
-                .orElseThrow(InvalidCredentialsException::new);
+        User user = userRepository.findByEmail(email).orElse(null);
 
-        if (!passwordEncoder.matches(
+        boolean passwordMatches = passwordEncoder.matches(
                 request.password(),
-                user.getPasswordHash()
-        )) {
+                user == null ? DUMMY_PASSWORD_HASH : user.getPasswordHash()
+        );
+        if (user == null || !passwordMatches) {
             throw new InvalidCredentialsException();
         }
 
