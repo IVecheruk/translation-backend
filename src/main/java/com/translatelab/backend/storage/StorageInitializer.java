@@ -2,7 +2,6 @@ package com.translatelab.backend.storage;
 
 import com.translatelab.backend.config.StorageProperties;
 import io.minio.BucketExistsArgs;
-import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -34,15 +33,13 @@ public class StorageInitializer implements ApplicationRunner {
             );
 
             if (!bucketExists) {
-                minioClient.makeBucket(
-                        MakeBucketArgs.builder()
-                                .bucket(bucket)
-                                .build()
+                throw new IllegalStateException(
+                        "Настроенный bucket MinIO не существует"
                 );
             }
         } catch (Exception exception) {
             throw new IllegalStateException(
-                    "Не удалось подготовить bucket MinIO: " + bucket,
+                    "Не удалось проверить доступ к bucket MinIO",
                     exception
             );
         }

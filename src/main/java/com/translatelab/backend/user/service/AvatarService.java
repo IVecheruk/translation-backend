@@ -5,18 +5,20 @@ import com.translatelab.backend.storage.service.StorageService;
 import com.translatelab.backend.user.avatar.AvatarFormat;
 import com.translatelab.backend.user.avatar.AvatarStorageKeyGenerator;
 import com.translatelab.backend.user.avatar.AvatarValidator;
+import com.translatelab.backend.user.avatar.ValidatedAvatar;
 import com.translatelab.backend.user.dto.AvatarDownloadResult;
 import com.translatelab.backend.user.entity.UserProfile;
 import com.translatelab.backend.user.exception.AvatarNotFoundException;
-import com.translatelab.backend.user.exception.InvalidAvatarException;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import com.translatelab.backend.user.repository.UserProfileRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.UUID;
@@ -43,25 +45,34 @@ public class AvatarService {
         this.storageService = storageService;
     }
 
+    @Transactional
     public void uploadAvatar(UUID userId, MultipartFile file) {
         Objects.requireNonNull(
                 userId,
                 "Идентификатор пользователя не должен быть null"
         );
 
-        UserProfile profile = findProfile(userId);
-        AvatarFormat format = avatarValidator.validate(file);
+        ValidatedAvatar avatar = avatarValidator.validateAndNormalize(file);
+        UserProfile profile = findProfileForUpdate(userId);
 
         String previousObjectKey = profile.getAvatarObjectKey();
-        String newObjectKey = avatarStorageKeyGenerator.generateAvatarKey(userId, format);
+        String newObjectKey = avatarStorageKeyGenerator.generateAvatarKey(
+                userId,
+                avatar.format()
+        );
 
-        uploadFile(file, newObjectKey, format);
+        uploadFile(avatar, newObjectKey);
         saveAvatarKey(profile, newObjectKey);
-        deleteUnusedAvatarObject(previousObjectKey);
+        deleteUnusedAvatarObjectAfterCommit(previousObjectKey);
     }
 
     private UserProfile findProfile(UUID userId) {
         return userProfileRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+    }
+
+    private UserProfile findProfileForUpdate(UUID userId) {
+        return userProfileRepository.findByIdForUpdate(userId)
+                .orElseThrow(UserNotFoundException::new);
     }
 
     public AvatarDownloadResult downloadAvatar(UUID userId) {
@@ -87,10 +98,11 @@ public class AvatarService {
         );
     }
 
+    @Transactional
     public void deleteAvatar(UUID userId) {
         Objects.requireNonNull(userId, "Идентификатор пользователя не должен быть null");
 
-        UserProfile profile = findProfile(userId);
+        UserProfile profile = findProfileForUpdate(userId);
         String objectKey = profile.getAvatarObjectKey();
 
         if (objectKey == null) {
@@ -100,32 +112,19 @@ public class AvatarService {
         profile.removeAvatar();
         userProfileRepository.saveAndFlush(profile);
 
-        deleteUnusedAvatarObject(objectKey);
+        deleteUnusedAvatarObjectAfterCommit(objectKey);
     }
 
-    private void uploadFile(MultipartFile file, String objectKey, AvatarFormat format) {
-        boolean uploadCompleted = false;
-
-        try (InputStream inputStream = file.getInputStream()) {
-            storageService.upload(
-                    objectKey,
-                    inputStream,
-                    file.getSize(),
-                    format.contentType()
-            );
-
-            uploadCompleted = true;
-        } catch (IOException exception) {
-            InvalidAvatarException avatarException = new InvalidAvatarException("Не удалось прочитать файл аватара");
-
-            avatarException.addSuppressed(exception);
-
-            if (uploadCompleted) {
-                deleteUploadedFile(objectKey, avatarException);
-            }
-
-            throw avatarException;
-        }
+    private void uploadFile(
+            ValidatedAvatar avatar,
+            String objectKey
+    ) {
+        storageService.upload(
+                objectKey,
+                avatar.inputStream(),
+                avatar.size(),
+                avatar.format().contentType()
+        );
     }
 
     private void saveAvatarKey(UserProfile profile, String objectKey) {
@@ -156,11 +155,30 @@ public class AvatarService {
             storageService.delete(objectKey);
         } catch (RuntimeException exception) {
             LOGGER.warn(
-                    "Не удалось удалить неиспользуемый объект аватара {}",
-                    objectKey,
+                    "Не удалось удалить неиспользуемый объект аватара",
                     exception
             );
         }
+    }
+
+    private void deleteUnusedAvatarObjectAfterCommit(String objectKey) {
+        if (objectKey == null) {
+            return;
+        }
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            deleteUnusedAvatarObject(objectKey);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        deleteUnusedAvatarObject(objectKey);
+                    }
+                }
+        );
     }
 
     private String resolveContentType(String objectKey) {

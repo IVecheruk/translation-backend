@@ -45,7 +45,7 @@ public class ProfileService {
                 "Запрос на обновление не должен быть null"
         );
 
-        UserProfile profile = findProfile(userId);
+        UserProfile profile = findProfileForUpdate(userId);
 
         profile.updateDetails(
                 request.username(),
@@ -63,6 +63,12 @@ public class ProfileService {
     private UserProfile findProfile(UUID userId) {
         return userProfileRepository
                 .findById(userId)
+                .orElseThrow(UserNotFoundException::new);
+    }
+
+    private UserProfile findProfileForUpdate(UUID userId) {
+        return userProfileRepository
+                .findByIdForUpdate(userId)
                 .orElseThrow(UserNotFoundException::new);
     }
 

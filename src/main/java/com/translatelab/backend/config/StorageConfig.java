@@ -6,7 +6,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(StorageProperties.class)
+@EnableConfigurationProperties({
+        StorageProperties.class,
+        AvatarProperties.class
+})
 public class StorageConfig {
 
     @Bean

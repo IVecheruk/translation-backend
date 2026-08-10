@@ -163,15 +163,17 @@ http://localhost:8080/actuator/health
 docker compose down
 ```
 
-Compose запускает Java backend, PostgreSQL, RabbitMQ и MinIO. Frontend и
-ML-сервис в Compose пока не включены.
+Compose запускает Java backend, PostgreSQL, RabbitMQ и MinIO. Одноразовый
+`minio-init` создаёт bucket и отдельную учётную запись backend с ограниченной
+bucket-scoped policy. Root-данные MinIO не передаются Java-контейнеру. Frontend
+и ML-сервис в Compose пока не включены.
 
 ## Локальный запуск Java backend
 
 Инфраструктуру можно оставить в Docker:
 
 ```bash
-docker compose up -d postgres rabbitmq minio
+docker compose up -d postgres rabbitmq minio minio-init
 ```
 
 Затем запустить приложение из IDE или Maven Wrapper.
@@ -202,7 +204,9 @@ Linux/macOS:
 - подтверждение email, восстановление пароля и SMTP-доставку;
 - отдельные лимиты запросов для публичных и затратных операций;
 - строгую CORS-политику для раздельных frontend/backend origin;
-- MinIO и bucket документов;
+- раздельные root/backend данные MinIO, bucket, разрешённые endpoint hosts и
+  явное разрешение локального HTTP;
+- ограничения размера, пикселей, декодированной памяти и очистки аватаров;
 - RabbitMQ и каналы обмена сообщениями;
 - резервирование и очистка лимитов использования;
 - OpenAPI/Swagger UI;
@@ -338,7 +342,10 @@ Backend не доверяет расширению и клиентскому `Co
 - доступен только владельцу аккаунта;
 - принимает JPEG или PNG;
 - ограничен размером 2 MiB;
-- проверяется по типу и сигнатуре содержимого.
+- полностью декодируется с ограничениями размеров, числа пикселей и памяти;
+- повторно кодируется в канонический JPEG или PNG без исходных метаданных;
+- заменяется и удаляется под блокировкой профиля, а оставшиеся orphan-объекты
+  очищаются ограниченным планировщиком.
 
 ## Тарифы и лимиты
 
