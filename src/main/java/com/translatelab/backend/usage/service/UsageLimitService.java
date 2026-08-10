@@ -15,6 +15,7 @@ import com.translatelab.backend.usage.repository.FeatureUsageRecordRepository;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.exception.UserNotFoundException;
 import com.translatelab.backend.user.repository.UserRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ public class UsageLimitService {
     private final UsageProperties usageProperties;
     private final Clock clock;
     private final TranslationJobRepository translationJobRepository;
+    private final MeterRegistry meterRegistry;
 
     public UsageLimitService(
             UserRepository userRepository,
@@ -43,7 +45,8 @@ public class UsageLimitService {
             UsagePeriodCalculator usagePeriodCalculator,
             UsageProperties usageProperties,
             Clock clock,
-            TranslationJobRepository translationJobRepository
+            TranslationJobRepository translationJobRepository,
+            MeterRegistry meterRegistry
     ) {
         this.userRepository = userRepository;
         this.entitlementService = entitlementService;
@@ -52,6 +55,7 @@ public class UsageLimitService {
         this.usageProperties = usageProperties;
         this.clock = clock;
         this.translationJobRepository = translationJobRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -118,6 +122,8 @@ public class UsageLimitService {
         FeatureUsageRecord savedReservation =
                 usageRecordRepository.save(reservation);
 
+        increment("reserved", featureCode);
+
         return savedReservation.getId();
     }
 
@@ -151,6 +157,7 @@ public class UsageLimitService {
                 ).orElseThrow(TranslationJobNotFoundException::new);
 
         reservation.consume(translationJob);
+        increment("consumed", reservation.getFeatureCode());
     }
 
     @Transactional
@@ -167,6 +174,7 @@ public class UsageLimitService {
                         );
 
         reservation.release();
+        increment("released", reservation.getFeatureCode());
     }
 
     @Transactional
@@ -207,7 +215,18 @@ public class UsageLimitService {
         long resultingUnits = occupiedUnits + (long) requestedUnits;
 
         if (resultingUnits > entitlement.limitUnits()) {
+            increment("rejected", featureCode);
             throw new UsageLimitExceededException();
         }
+    }
+
+    private void increment(String outcome, FeatureCode featureCode) {
+        meterRegistry.counter(
+                "translatelab.quota.operations",
+                "outcome",
+                outcome,
+                "feature",
+                featureCode.name()
+        ).increment();
     }
 }

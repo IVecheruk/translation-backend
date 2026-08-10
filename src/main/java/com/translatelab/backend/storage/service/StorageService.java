@@ -8,6 +8,7 @@ import io.minio.ListObjectsArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -24,13 +25,16 @@ public class StorageService {
 
     private final MinioClient minioClient;
     private final StorageProperties storageProperties;
+    private final MeterRegistry meterRegistry;
 
     public StorageService(
             MinioClient minioClient,
-            StorageProperties storageProperties
+            StorageProperties storageProperties,
+            MeterRegistry meterRegistry
     ) {
         this.minioClient = minioClient;
         this.storageProperties = storageProperties;
+        this.meterRegistry = meterRegistry;
     }
 
     public String upload(
@@ -43,7 +47,10 @@ public class StorageService {
 
         String actualContentType = resolveContentType(contentType);
 
-        try {
+        return execute(
+                "upload",
+                "Не удалось загрузить файл в MinIO: " + objectKey,
+                () -> {
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(storageProperties.bucket())
@@ -52,32 +59,27 @@ public class StorageService {
                             .contentType(actualContentType)
                             .build()
             );
-
             return objectKey;
-        } catch (Exception exception) {
-            throw new StorageException(
-                    "Не удалось загрузить файл в MinIO: "
-                    + objectKey, exception
-            );
-        }
+                }
+        );
     }
 
     public void delete(String objectKey) {
         validateObjectKey(objectKey);
 
-        try {
+        execute(
+                "delete",
+                "Не удалось удалить файл из MinIO: " + objectKey,
+                () -> {
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(storageProperties.bucket())
                             .object(objectKey)
                             .build()
             );
-        } catch (Exception exception) {
-            throw new StorageException(
-                    "Не удалось удалить файл из MinIO: "
-                            + objectKey, exception
-            );
-        }
+                    return null;
+                }
+        );
     }
 
     private void validateUploadArguments(
@@ -118,20 +120,17 @@ public class StorageService {
     public InputStream download(String objectKey) {
         validateObjectKey(objectKey);
 
-        try {
-            return minioClient.getObject(
+        return execute(
+                "download",
+                "Не удалось скачать файл из MinIO: " + objectKey,
+                () ->
+                minioClient.getObject(
                     GetObjectArgs.builder()
                             .bucket(storageProperties.bucket())
                             .object(objectKey)
                             .build()
-            );
-        } catch (Exception exception) {
-            throw new StorageException(
-                    "Не удалось скачать файл из MinIO: "
-                    + objectKey,
-                    exception
-            );
-        }
+                )
+        );
     }
 
     public List<StoredObjectInfo> listOlderThan(
@@ -156,7 +155,7 @@ public class StorageService {
 
         List<StoredObjectInfo> objects = new ArrayList<>(limit);
 
-        try {
+        return execute("list", "Не удалось получить список объектов MinIO", () -> {
             var results = minioClient.listObjects(
                     ListObjectsArgs.builder()
                             .bucket(storageProperties.bucket())
@@ -183,13 +182,45 @@ public class StorageService {
                     break;
                 }
             }
-
             return List.copyOf(objects);
+        });
+    }
+
+    private <T> T execute(
+            String operation,
+            String failureMessage,
+            StorageOperation<T> storageOperation
+    ) {
+        long startedAt = System.nanoTime();
+        try {
+            T result = storageOperation.execute();
+            recordOutcome(operation, "success");
+            return result;
         } catch (Exception exception) {
-            throw new StorageException(
-                    "Не удалось получить список объектов MinIO",
-                    exception
-            );
+            recordOutcome(operation, "failure");
+            throw new StorageException(failureMessage, exception);
+        } finally {
+            meterRegistry.timer(
+                    "translatelab.storage.operation.duration",
+                    "operation",
+                    operation
+            ).record(System.nanoTime() - startedAt, java.util.concurrent.TimeUnit.NANOSECONDS);
         }
+    }
+
+    private void recordOutcome(String operation, String outcome) {
+        meterRegistry.counter(
+                "translatelab.storage.operations",
+                "operation",
+                operation,
+                "outcome",
+                outcome
+        ).increment();
+    }
+
+    @FunctionalInterface
+    private interface StorageOperation<T> {
+
+        T execute() throws Exception;
     }
 }

@@ -192,6 +192,32 @@ Linux/macOS:
 
 Приложение загружает локальные настройки из `.env`, если файл существует.
 
+## Production-развёртывание
+
+`compose.yaml` предназначен только для локальной разработки. Отдельный
+`compose.production.yaml` описывает production-контур с Caddy, PostgreSQL,
+RabbitMQ, Prometheus и Alertmanager. Наружу публикуются только порты 80/443
+Caddy; базы данных, брокер, backend и операционные endpoint остаются во
+внутренних сетях. Production использует заранее созданное совместимое с MinIO
+объектное хранилище через одобренный HTTPS endpoint.
+
+Боевые образы должны передаваться по immutable digest, а секреты — отдельными
+Docker/platform secrets. `.env` в production не используется. Безопасные
+шаблоны несекретных переменных и перечня secret-файлов находятся в
+`deploy/production`; полный порядок подготовки, ротации, мониторинга,
+резервного копирования и восстановления описан в `OPERATIONS_RUNBOOK.md`.
+
+Перед развёртыванием production-конфигурация проверяется командой:
+
+```powershell
+.\scripts\validate-production-compose.ps1
+```
+
+Фактический запуск требует собственного домена, ACME-контакта, опубликованных
+образов по digest, настроенного secret manager, HTTPS MinIO, alert receiver и
+подтверждённого restore drill. Демонстрационные значения из шаблонов для этого
+не подходят.
+
 ## Конфигурация
 
 Полный безопасный перечень параметров находится в `.env.example`. Настройки
@@ -296,6 +322,8 @@ http://localhost:8080
 | `POST` | `/api/account/subscription/cancellation` | JWT | запрос отмены подписки |
 | `POST` | `/api/subscription-purchases` | JWT + подтверждённый email | начало покупки подписки |
 | `GET` | `/actuator/health` | публичный | состояние приложения |
+| `GET` | `/livez` | только внутренний production-контур | liveness probe |
+| `GET` | `/readyz` | только внутренний production-контур | PostgreSQL, RabbitMQ и MinIO readiness |
 
 Служебные callback-маршруты внешних интеграций намеренно не документируются в
 публичном README.
@@ -474,4 +502,8 @@ Linux/macOS:
   граница между Java и ML;
 - `ACCOUNT_PROFILE_SUBSCRIPTION_ARCHITECTURE.md` — принятые решения для
   аккаунта, профиля, подписок и лимитов;
+- `BACKEND_HARDENING_BACKLOG.md` — упорядоченный backlog безопасности и
+  production readiness;
+- `OPERATIONS_RUNBOOK.md` — production deployment, secrets, monitoring,
+  backup и recovery drill;
 - `DEVELOPMENT_STATUS.md` — актуальный технический статус Java-модуля.

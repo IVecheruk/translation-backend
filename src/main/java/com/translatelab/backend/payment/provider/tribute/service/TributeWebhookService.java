@@ -14,6 +14,7 @@ import com.translatelab.backend.payment.service.SubscriptionPurchaseFailureServi
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookException;
 import com.translatelab.backend.payment.provider.tribute.exception.InvalidTributeWebhookSignatureException;
 import com.translatelab.backend.payment.service.SubscriptionPurchaseCompletionService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
@@ -36,6 +37,7 @@ public class TributeWebhookService {
     private final SubscriptionPurchaseCompletionService completionService;
     private final SubscriptionProviderLifecycleService lifecycleService;
     private final SubscriptionPurchaseFailureService purchaseFailureService;
+    private final MeterRegistry meterRegistry;
 
     public TributeWebhookService(
             TributeWebhookSignatureVerifier signatureVerifier,
@@ -44,7 +46,8 @@ public class TributeWebhookService {
             TributeWebhookCommandMapper commandMapper,
             SubscriptionPurchaseCompletionService completionService,
             SubscriptionProviderLifecycleService lifecycleService,
-            SubscriptionPurchaseFailureService purchaseFailureService
+            SubscriptionPurchaseFailureService purchaseFailureService,
+            MeterRegistry meterRegistry
     ) {
         this.signatureVerifier = Objects.requireNonNull(
                 signatureVerifier,
@@ -78,31 +81,42 @@ public class TributeWebhookService {
                 purchaseFailureService,
                 "Сервис неуспешной покупки не должен быть null"
         );
+        this.meterRegistry = Objects.requireNonNull(
+                meterRegistry,
+                "Реестр метрик не должен быть null"
+        );
     }
 
     public boolean processWebhook(
             byte[] rawBody,
             String signature
     ) {
-        if (!signatureVerifier.isValid(
-                rawBody,
-                signature
-        )) {
-            throw new InvalidTributeWebhookSignatureException();
+        try {
+            if (!signatureVerifier.isValid(
+                    rawBody,
+                    signature
+            )) {
+                throw new InvalidTributeWebhookSignatureException();
+            }
+
+            TributeWebhookEvent event =
+                    deserializeEvent(rawBody);
+
+            boolean processed = switch (event.name()) {
+                case "shop_order" -> processInitialPayment(event);
+                case "shop_order_charge_success" -> processChargeSuccess(event);
+                case "shop_order_charge_failed" -> processChargeFailure(event);
+                case "shop_order_cancelled" -> processCancellation(event);
+                case "shop_order_refunded" -> processRefund(event);
+                case "shop_order_payment_failed" -> processInitialFailure(event);
+                default -> throw new InvalidTributeWebhookException();
+            };
+            increment(processed ? "processed" : "duplicate");
+            return processed;
+        } catch (RuntimeException exception) {
+            increment("failure");
+            throw exception;
         }
-
-        TributeWebhookEvent event =
-                deserializeEvent(rawBody);
-
-        return switch (event.name()) {
-            case "shop_order" -> processInitialPayment(event);
-            case "shop_order_charge_success" -> processChargeSuccess(event);
-            case "shop_order_charge_failed" -> processChargeFailure(event);
-            case "shop_order_cancelled" -> processCancellation(event);
-            case "shop_order_refunded" -> processRefund(event);
-            case "shop_order_payment_failed" -> processInitialFailure(event);
-            default -> throw new InvalidTributeWebhookException();
-        };
     }
 
     private TributeWebhookEvent deserializeEvent(
@@ -181,5 +195,15 @@ public class TributeWebhookService {
 
     private String upper(String value) {
         return value.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private void increment(String outcome) {
+        meterRegistry.counter(
+                "translatelab.payment.webhook.events",
+                "provider",
+                "tribute",
+                "outcome",
+                outcome
+        ).increment();
     }
 }

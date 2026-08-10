@@ -68,7 +68,10 @@ public class TranslationTaskPublisher {
                     messagingProperties.exchange(),
                     messagingProperties.routingKey(),
                     message,
-                    this::prepareMessage,
+                    rawMessage -> prepareMessage(
+                            rawMessage,
+                            message.eventId().toString()
+                    ),
                     correlationData
             );
 
@@ -117,7 +120,10 @@ public class TranslationTaskPublisher {
         return new MessagePublishingException(PUBLIC_ERROR, cause);
     }
 
-    private Message prepareMessage(Message message) {
+    private Message prepareMessage(
+            Message message,
+            String correlationId
+    ) {
         if (message.getBody().length
                 > messagingProperties.maxMessageSize().toBytes()) {
             throw failure("Сообщение превышает допустимый размер");
@@ -126,6 +132,7 @@ public class TranslationTaskPublisher {
         message.getMessageProperties().setDeliveryMode(
                 MessageDeliveryMode.PERSISTENT
         );
+        message.getMessageProperties().setCorrelationId(correlationId);
         return message;
     }
 

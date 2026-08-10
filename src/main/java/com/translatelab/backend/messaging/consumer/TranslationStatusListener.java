@@ -8,6 +8,7 @@ import com.translatelab.backend.translation.service.TranslationStatusUpdateServi
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -29,14 +30,22 @@ public class TranslationStatusListener {
             TranslationStatusMessage message,
             Message rawMessage
     ) {
-        if (rawMessage.getBody().length
-                > messagingProperties.maxMessageSize().toBytes()) {
-            throw new AmqpRejectAndDontRequeueException(
-                    "Сообщение статуса превышает допустимый размер"
-            );
-        }
+        String correlationId = message != null && message.jobId() != null
+                ? message.jobId().toString()
+                : java.util.UUID.randomUUID().toString();
+        MDC.put("correlationId", correlationId);
+        try {
+            if (rawMessage.getBody().length
+                    > messagingProperties.maxMessageSize().toBytes()) {
+                throw new AmqpRejectAndDontRequeueException(
+                        "Сообщение статуса превышает допустимый размер"
+                );
+            }
 
-        consume(message);
+            consume(message);
+        } finally {
+            MDC.remove("correlationId");
+        }
     }
 
     public void consume(TranslationStatusMessage message) {

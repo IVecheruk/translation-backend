@@ -19,6 +19,8 @@ target/
 *.iml
 *.ipr
 *.env
+deploy/production/secrets/
+backup-staging/
 
 ### NetBeans ###
 /nbproject/private/

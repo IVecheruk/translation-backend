@@ -75,7 +75,12 @@ public class SecurityConfig {
                                 HttpMethod.GET,
                                 "/api/subscription-offers"
                         ).permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers(
+                                "/actuator/health/**",
+                                "/actuator/prometheus",
+                                "/livez",
+                                "/readyz"
+                        ).permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/payments/webhooks/tribute"
