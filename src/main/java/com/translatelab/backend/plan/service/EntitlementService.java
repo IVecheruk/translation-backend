@@ -40,12 +40,29 @@ public class EntitlementService {
             UUID userId,
             FeatureCode featureCode
     ) {
+        return resolveEntitlement(
+                userId,
+                featureCode,
+                clock.instant()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ResolvedEntitlement resolveEntitlement(
+            UUID userId,
+            FeatureCode featureCode,
+            Instant referenceTime
+    ) {
         Objects.requireNonNull(
                 featureCode,
                 "Код функции не должен быть null"
         );
+        Objects.requireNonNull(
+                referenceTime,
+                "Момент определения тарифа не должен быть null"
+        );
 
-        String planCode = resolvePlanCode(userId);
+        String planCode = resolvePlanCode(userId, referenceTime);
 
         PlanEntitlementId entitlementId = new PlanEntitlementId(
                 planCode,
@@ -59,16 +76,17 @@ public class EntitlementService {
         return toResolvedEntitlement(entitlement);
     }
 
-    private String resolvePlanCode(UUID userId) {
+    private String resolvePlanCode(
+            UUID userId,
+            Instant referenceTime
+    ) {
         Objects.requireNonNull(
                 userId,
                 "Идентификатор пользователя не должен быть null"
         );
 
-        Instant now = clock.instant();
-
         return userSubscriptionRepository
-                .findEffectiveActiveByUserIdAt(userId, now)
+                .findEffectiveActiveByUserIdAt(userId, referenceTime)
                 .map(subscription -> subscription.getPlan().getCode())
                 .orElse(FREE_PLAN_CODE);
     }

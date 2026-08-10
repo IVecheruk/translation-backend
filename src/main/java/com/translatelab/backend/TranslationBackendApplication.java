@@ -6,8 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class TranslationBackendApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(TranslationBackendApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(TranslationBackendApplication.class, args);
+    }
 
 }

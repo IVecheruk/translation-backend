@@ -53,13 +53,14 @@ public class AccountUsageService {
         FeatureCode featureCode =
                 FeatureCode.DOCUMENT_TRANSLATION;
 
+        Instant now = clock.instant();
+
         ResolvedEntitlement entitlement =
                 entitlementService.resolveEntitlement(
                         userId,
-                        featureCode
+                        featureCode,
+                        now
                 );
-
-        Instant now = clock.instant();
 
         UsagePeriod period = usagePeriodCalculator.calculate(
                 entitlement.periodType(),

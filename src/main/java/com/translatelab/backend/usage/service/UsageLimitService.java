@@ -82,13 +82,14 @@ public class UsageLimitService {
         User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(UserNotFoundException::new);
 
+        Instant now = clock.instant();
+
         ResolvedEntitlement entitlement =
                 entitlementService.resolveEntitlement(
                         userId,
-                        featureCode
+                        featureCode,
+                        now
                 );
-
-        Instant now = clock.instant();
 
         UsagePeriod period = usagePeriodCalculator.calculate(
                 entitlement.periodType(),

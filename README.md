@@ -485,6 +485,24 @@ Linux/macOS:
 Полные интеграционные тесты ожидают доступные
 локальные PostgreSQL, RabbitMQ и MinIO.
 
+Воспроизводимый полный quality gate не использует локальные данные и запускает
+одноразовые PostgreSQL, RabbitMQ и MinIO вместе с Maven на закреплённом Java 21:
+
+```powershell
+.\scripts\test-isolated.ps1
+```
+
+Он выполняет все тесты, Checkstyle, SpotBugs с FindSecBugs и формирует JaCoCo-
+отчёт в `target/isolated-quality`. Сценарии отказов перечислены в
+`FAILURE_INJECTION_MATRIX.md`.
+
+Release-candidate собирается только после этого gate и проверяется через
+health/liveness/readiness именно из собранного образа:
+
+```powershell
+.\scripts\release-verify.ps1 -Image translation-backend:release-candidate
+```
+
 ## Текущие ограничения
 
 - Frontend и ML-сервис отсутствуют в этом репозитории.

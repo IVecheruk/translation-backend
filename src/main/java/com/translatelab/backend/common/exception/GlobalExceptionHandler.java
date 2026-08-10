@@ -37,16 +37,28 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String RETRY_AFTER_SECONDS = "1";
+
+    private final Optional<MeterRegistry> meterRegistry;
+
+    public GlobalExceptionHandler(Optional<MeterRegistry> meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
 
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<ApiError> handleEmailAlreadyExists(
@@ -515,6 +527,43 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 Map.of()
         );
+    }
+
+    @ExceptionHandler({
+            PessimisticLockingFailureException.class,
+            OptimisticLockingFailureException.class,
+            QueryTimeoutException.class
+    })
+    public ResponseEntity<ApiError> handleDatabaseContention(
+            RuntimeException exception,
+            HttpServletRequest request
+    ) {
+        String kind = exception instanceof OptimisticLockingFailureException
+                ? "optimistic"
+                : exception instanceof QueryTimeoutException
+                ? "timeout"
+                : "pessimistic";
+        meterRegistry.ifPresent(registry -> registry.counter(
+                        "translatelab.database.contention",
+                        "kind",
+                        kind
+                ).increment());
+        LOGGER.warn(
+                "Временный конфликт доступа к данным при обработке запроса {}, correlationId={}",
+                request.getRequestURI(),
+                CorrelationIdContext.currentOrCreate()
+        );
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS)
+                .body(new ApiError(
+                        Instant.now(),
+                        HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        "Ресурс временно занят, повторите запрос",
+                        request.getRequestURI(),
+                        Map.of(),
+                        CorrelationIdContext.currentOrCreate()
+                ));
     }
 
     @ExceptionHandler(RequestRateLimitExceededException.class)
