@@ -1,0 +1,39 @@
+# Non-secret production settings. Inject equivalent values through the
+# deployment platform; do not use the local .env file in production.
+PUBLIC_DOMAIN=api.example.com
+ACME_EMAIL=operations@example.com
+FRONTEND_BASE_URL=https://app.example.com
+JWT_ISSUER=https://api.example.com
+JWT_AUDIENCE=translation-frontend
+JWT_KEY_ID=production-2026-01
+
+POSTGRES_DB=translation_lab
+POSTGRES_USER=translation_app
+RABBITMQ_USER=translation_app
+RABBITMQ_VHOST=translation
+
+MINIO_ENDPOINT=https://objects.example.com
+MINIO_ALLOWED_HOSTS=objects.example.com
+MINIO_BUCKET=translation-documents
+
+ACCOUNT_EMAIL_DELIVERY_ENABLED=true
+ACCOUNT_EMAIL_SENDER=noreply@example.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_AUTH=true
+SMTP_STARTTLS=true
+
+PAYMENT_PROVIDER=TRIBUTE
+TRIBUTE_ENABLED=true
+TRIBUTE_BASE_URL=https://tribute.tg/api/v1
+
+PRODUCTION_SECRETS_DIR=/run/translatelab/secrets
+
+# Replace every example digest with the reviewed digest from the image
+# registry. The validation script rejects tag-only references.
+BACKEND_IMAGE=registry.example.com/translatelab/backend:1.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+CADDY_IMAGE=caddy:2.10.2-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000
+POSTGRES_IMAGE=postgres:17-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000
+RABBITMQ_IMAGE=rabbitmq:4-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000
+PROMETHEUS_IMAGE=prom/prometheus:v3.5.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ALERTMANAGER_IMAGE=prom/alertmanager:v0.28.1@sha256:0000000000000000000000000000000000000000000000000000000000000000

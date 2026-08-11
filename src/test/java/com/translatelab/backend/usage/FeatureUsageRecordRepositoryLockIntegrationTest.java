@@ -1,0 +1,164 @@
+package com.translatelab.backend.usage;
+
+import com.translatelab.backend.plan.entity.FeatureCode;
+import com.translatelab.backend.usage.entity.FeatureUsageRecord;
+import com.translatelab.backend.usage.repository.FeatureUsageRecordRepository;
+import com.translatelab.backend.user.entity.User;
+import com.translatelab.backend.user.repository.UserRepository;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.Instant;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SpringBootTest
+class FeatureUsageRecordRepositoryLockIntegrationTest {
+
+    private static final Instant PERIOD_START =
+            Instant.parse("2026-07-01T00:00:00Z");
+    private static final Instant PERIOD_END =
+            Instant.parse("2026-08-01T00:00:00Z");
+    private static final Instant EXPIRES_AT =
+            Instant.parse("2026-07-30T12:15:00Z");
+
+    @Autowired
+    private FeatureUsageRecordRepository usageRecordRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @Test
+    void shouldSerializePessimisticLocksForSameReservation()
+            throws Exception {
+        TransactionTemplate transaction = new TransactionTemplate(
+                transactionManager
+        );
+        TestData testData = transaction.execute(status -> {
+            User user = userRepository.saveAndFlush(
+                    new User(
+                            UUID.randomUUID() + "@example.com",
+                            "password-hash"
+                    )
+            );
+            FeatureUsageRecord reservation =
+                    usageRecordRepository.saveAndFlush(
+                            FeatureUsageRecord.reserve(
+                                    user,
+                                    FeatureCode.DOCUMENT_TRANSLATION,
+                                    1,
+                                    PERIOD_START,
+                                    PERIOD_END,
+                                    EXPIRES_AT
+                            )
+                    );
+
+            return new TestData(user.getId(), reservation.getId());
+        });
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch firstLockAcquired = new CountDownLatch(1);
+        CountDownLatch releaseFirstTransaction = new CountDownLatch(1);
+        CountDownLatch secondTransactionStarted = new CountDownLatch(1);
+        AtomicBoolean secondLockAcquired = new AtomicBoolean(false);
+        Future<?> firstTransaction = null;
+        Future<?> secondTransaction = null;
+
+        try {
+            firstTransaction = executor.submit(() ->
+                    transaction.executeWithoutResult(status -> {
+                        usageRecordRepository.findByIdForUpdate(
+                                testData.reservationId()
+                        ).orElseThrow();
+                        firstLockAcquired.countDown();
+                        await(releaseFirstTransaction);
+                    })
+            );
+
+            assertTrue(firstLockAcquired.await(5, TimeUnit.SECONDS));
+
+            secondTransaction = executor.submit(() ->
+                    transaction.executeWithoutResult(status -> {
+                        secondTransactionStarted.countDown();
+                        usageRecordRepository.findByIdForUpdate(
+                                testData.reservationId()
+                        ).orElseThrow();
+                        secondLockAcquired.set(true);
+                    })
+            );
+
+            assertTrue(
+                    secondTransactionStarted.await(5, TimeUnit.SECONDS)
+            );
+            Future<?> waitingTransaction = secondTransaction;
+
+            assertThrows(
+                    TimeoutException.class,
+                    () -> waitingTransaction.get(
+                            300,
+                            TimeUnit.MILLISECONDS
+                    )
+            );
+            assertFalse(secondLockAcquired.get());
+
+            releaseFirstTransaction.countDown();
+            firstTransaction.get(5, TimeUnit.SECONDS);
+            secondTransaction.get(5, TimeUnit.SECONDS);
+
+            assertTrue(secondLockAcquired.get());
+        } finally {
+            releaseFirstTransaction.countDown();
+
+            if (firstTransaction != null) {
+                firstTransaction.cancel(true);
+            }
+
+            if (secondTransaction != null) {
+                secondTransaction.cancel(true);
+            }
+
+            executor.shutdownNow();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            transaction.executeWithoutResult(status ->
+                    userRepository.deleteById(testData.userId())
+            );
+        }
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException(
+                        "Ожидание синхронизации транзакций превысило лимит"
+                );
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Ожидание синхронизации транзакций прервано",
+                    exception
+            );
+        }
+    }
+
+    private record TestData(
+            UUID userId,
+            UUID reservationId
+    ) {
+    }
+}
