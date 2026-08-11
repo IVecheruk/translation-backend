@@ -34,3 +34,14 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local project and agent documentation ###
+/ACCOUNT_PROFILE_SUBSCRIPTION_ARCHITECTURE.md
+/AGENTS.md
+/BACKEND_HARDENING_BACKLOG.md
+/DEVELOPMENT_STATUS.md
+/FAILURE_INJECTION_MATRIX.md
+/JAVA_ML_DOCUMENT_CONTRACT.md
+/OPERATIONS_RUNBOOK.md
+/SECURITY_RELEASE_CHECKLIST.md
+/Проект_сервис_перевода_документов.md
