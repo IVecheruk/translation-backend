@@ -145,10 +145,16 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
+MinIO Server и `mc` собираются локально из официальных исходников: прежние
+публичные образы больше не требуются. Коммиты исходников и базовые образы
+зафиксированы в `docker/minio/Dockerfile`; сборка поддерживает AMD64 и ARM64.
+При первом запуске нужны доступ к GitHub, Docker Hub, Alpine и Go proxy и
+время на компиляцию. Подробности: [локальная сборка MinIO](docker/minio/README.md).
+
 Проверить состояние контейнеров:
 
 ```bash
-docker compose ps
+docker compose ps -a
 ```
 
 Проверить готовность backend:
@@ -167,6 +173,8 @@ Compose запускает Java backend, PostgreSQL, RabbitMQ и MinIO. Одно
 `minio-init` создаёт bucket и отдельную учётную запись backend с ограниченной
 bucket-scoped policy. Root-данные MinIO не передаются Java-контейнеру. Frontend
 и ML-сервис в Compose пока не включены.
+Нормальное состояние `minio-init` после настройки — `Exited (0)`.
+MinIO API и консоль доступны только на `127.0.0.1` (обычно порты 9000 и 9001).
 
 ## Локальный запуск Java backend
 
