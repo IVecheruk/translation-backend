@@ -2,6 +2,11 @@ package com.translatelab.backend.auth.controller;
 
 import com.translatelab.backend.auth.dto.LoginRequest;
 import com.translatelab.backend.auth.dto.LoginResponse;
+import com.translatelab.backend.auth.dto.SessionTokens;
+import com.translatelab.backend.auth.service.RefreshTokenService;
+import com.translatelab.backend.auth.service.RefreshCookieService;
+import com.translatelab.backend.auth.exception.InvalidRefreshTokenException;
+import jakarta.servlet.http.Cookie;
 import com.translatelab.backend.auth.dto.RegisterRequest;
 import com.translatelab.backend.auth.dto.RegisterResponse;
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
@@ -23,15 +28,22 @@ import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -39,10 +51,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AuthController.class)
+@TestPropertySource(properties = {
+        "app.security.cors-enabled=true",
+        "app.refresh-token.cookie-secure=true",
+        "app.security.allowed-origins=http://localhost:5173"
+})
 @Import({
         SecurityConfig.class,
         GlobalExceptionHandler.class,
-        RestSecurityErrorHandler.class
+        RestSecurityErrorHandler.class,
+        RefreshCookieService.class,
+        AuthControllerTest.TimeConfig.class
 })
 class AuthControllerTest {
 
@@ -63,6 +82,16 @@ class AuthControllerTest {
 
     @MockitoBean
     private LoginAttemptLimiter loginAttemptLimiter;
+
+    @MockitoBean
+    private RefreshTokenService refreshTokenService;
+
+    @TestConfiguration
+    static class TimeConfig {
+        @Bean Clock clock() {
+            return Clock.fixed(Instant.parse("2026-10-07T00:00:00Z"), ZoneOffset.UTC);
+        }
+    }
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
@@ -187,7 +216,8 @@ class AuthControllerTest {
         );
 
         given(loginService.login(any(LoginRequest.class)))
-                .willReturn(response);
+                .willReturn(new SessionTokens(response, "a".repeat(43),
+                        Instant.parse("2026-10-14T00:00:00Z")));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -201,7 +231,13 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.accessToken")
                         .value("test-access-token"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
-                .andExpect(jsonPath("$.expiresIn").value(3600));
+                .andExpect(jsonPath("$.expiresIn").value(3600))
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(cookie().httpOnly(RefreshCookieService.COOKIE_NAME, true))
+                .andExpect(cookie().secure(RefreshCookieService.COOKIE_NAME, true))
+                .andExpect(cookie().path(RefreshCookieService.COOKIE_NAME, "/api/auth"))
+                .andExpect(cookie().maxAge(RefreshCookieService.COOKIE_NAME, 604800))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
 
         verify(loginService).login(
                 new LoginRequest(
@@ -354,5 +390,93 @@ class AuthControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(sessionRevocationService).revokeAll(userId);
+    }
+
+    @Test
+    void shouldRefreshUsingCookieEvenWithExpiredBearerHeader() throws Exception {
+        String raw = "a".repeat(43);
+        given(refreshTokenService.rotate(raw)).willReturn(new SessionTokens(
+                new LoginResponse("new-access-token", "Bearer", 900),
+                "b".repeat(43), Instant.parse("2026-10-14T00:00:00Z")
+        ));
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(new Cookie(RefreshCookieService.COOKIE_NAME, raw))
+                        .header("X-Refresh-Request", "true")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer expired-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(cookie().value(RefreshCookieService.COOKIE_NAME, "b".repeat(43)))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+        verifyNoInteractions(jwtDecoder);
+    }
+
+    @Test
+    void shouldRejectCookieActionsWithoutCsrfHeader() throws Exception {
+        for (String path : new String[]{"/api/auth/refresh", "/api/auth/logout"}) {
+            mockMvc.perform(post(path)
+                            .cookie(new Cookie(RefreshCookieService.COOKIE_NAME, "a".repeat(43))))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.correlation_id").isNotEmpty());
+        }
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void shouldClearCookieWhenRefreshIsInvalid() throws Exception {
+        given(refreshTokenService.rotate("a".repeat(43)))
+                .willThrow(new InvalidRefreshTokenException());
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(new Cookie(RefreshCookieService.COOKIE_NAME, "a".repeat(43)))
+                        .header("X-Refresh-Request", "true"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(cookie().maxAge(RefreshCookieService.COOKIE_NAME, 0));
+    }
+
+    @Test
+    void shouldRejectMissingAndConflictingCookies() throws Exception {
+        given(refreshTokenService.rotate(null)).willThrow(new InvalidRefreshTokenException());
+        mockMvc.perform(post("/api/auth/refresh").header("X-Refresh-Request", "true"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/auth/refresh").header("X-Refresh-Request", "true")
+                        .cookie(new Cookie(RefreshCookieService.COOKIE_NAME, "a".repeat(43)),
+                                new Cookie(RefreshCookieService.COOKIE_NAME, "b".repeat(43))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldLogoutWithoutAccessTokenAndClearCookie() throws Exception {
+        String raw = "a".repeat(43);
+        mockMvc.perform(post("/api/auth/logout").header("X-Refresh-Request", "true")
+                        .cookie(new Cookie(RefreshCookieService.COOKIE_NAME, raw)))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge(RefreshCookieService.COOKIE_NAME, 0));
+        verify(refreshTokenService).logout(raw);
+    }
+
+    @Test
+    void shouldAllowRefreshPreflightOnlyFromConfiguredOrigin() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options("/api/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "X-Refresh-Request"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173"))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+        mockMvc.perform(post("/api/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, "https://untrusted.example")
+                        .header("X-Refresh-Request", "true"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void shouldRejectSimpleContentTypeOnLogin() throws Exception {
+        mockMvc.perform(post("/api/auth/login").contentType(MediaType.TEXT_PLAIN)
+                        .content("{\"email\":\"user@example.com\",\"password\":\"password123\"}"))
+                .andExpect(status().isUnsupportedMediaType());
+        verifyNoInteractions(loginService);
     }
 }

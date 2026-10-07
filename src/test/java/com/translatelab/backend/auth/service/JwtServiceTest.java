@@ -42,7 +42,9 @@ class JwtServiceTest {
         NimbusJwtDecoder decoder = (NimbusJwtDecoder) config.jwtDecoder(
                 secretKey,
                 properties,
-                userRepository
+                userRepository,
+                mock(com.translatelab.backend.auth.repository.RefreshSessionRepository.class),
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
         decoder.setJwtValidator(jwt -> OAuth2TokenValidatorResult.success());
         JwtService jwtService = new JwtService(

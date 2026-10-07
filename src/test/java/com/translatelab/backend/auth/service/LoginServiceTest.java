@@ -2,6 +2,7 @@ package com.translatelab.backend.auth.service;
 
 import com.translatelab.backend.auth.dto.LoginRequest;
 import com.translatelab.backend.auth.dto.LoginResponse;
+import com.translatelab.backend.auth.dto.SessionTokens;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.repository.UserRepository;
@@ -13,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -32,7 +34,7 @@ class LoginServiceTest {
     private PasswordEncoder passwordEncoder;
 
     @Mock
-    private JwtService jwtService;
+    private RefreshTokenService refreshTokenService;
 
     @InjectMocks
     private LoginService loginService;
@@ -48,30 +50,32 @@ class LoginServiceTest {
                 "hashed-password"
         );
 
-        given(userRepository.findByEmail("user@example.com"))
+        given(userRepository.findByEmailForUpdate("user@example.com"))
                 .willReturn(Optional.of(user));
         given(passwordEncoder.matches(
                 "password123",
                 "hashed-password"
         )).willReturn(true);
-        given(jwtService.generateAccessToken(user))
-                .willReturn("test-access-token");
-        given(jwtService.getAccessTokenTtlSeconds())
-                .willReturn(3600L);
+        SessionTokens expected = new SessionTokens(
+                new LoginResponse("test-access-token", "Bearer", 900L),
+                "test-refresh-token", Instant.parse("2026-10-14T00:00:00Z")
+        );
+        given(refreshTokenService.open(user)).willReturn(expected);
 
-        LoginResponse response = loginService.login(request);
+        SessionTokens tokens = loginService.login(request);
+        LoginResponse response = tokens.response();
 
+        assertEquals(expected, tokens);
         assertEquals("test-access-token", response.accessToken());
         assertEquals("Bearer", response.tokenType());
-        assertEquals(3600L, response.expiresIn());
+        assertEquals(900L, response.expiresIn());
 
-        verify(userRepository).findByEmail("user@example.com");
+        verify(userRepository).findByEmailForUpdate("user@example.com");
         verify(passwordEncoder).matches(
                 "password123",
                 "hashed-password"
         );
-        verify(jwtService).generateAccessToken(user);
-        verify(jwtService).getAccessTokenTtlSeconds();
+        verify(refreshTokenService).open(user);
     }
 
     @Test
@@ -81,7 +85,7 @@ class LoginServiceTest {
                 "password123"
         );
 
-        given(userRepository.findByEmail("missing@example.com"))
+        given(userRepository.findByEmailForUpdate("missing@example.com"))
                 .willReturn(Optional.empty());
 
         InvalidCredentialsException exception = assertThrows(
@@ -93,9 +97,9 @@ class LoginServiceTest {
                 "Неверный email или пароль",
                 exception.getMessage()
         );
-        verify(userRepository).findByEmail("missing@example.com");
+        verify(userRepository).findByEmailForUpdate("missing@example.com");
         verify(passwordEncoder).matches(eq("password123"), anyString());
-        verifyNoInteractions(jwtService);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -109,7 +113,7 @@ class LoginServiceTest {
                 "hashed-password"
         );
 
-        given(userRepository.findByEmail("user@example.com"))
+        given(userRepository.findByEmailForUpdate("user@example.com"))
                 .willReturn(Optional.of(user));
         given(passwordEncoder.matches(
                 "wrong-password",
@@ -129,6 +133,6 @@ class LoginServiceTest {
                 "wrong-password",
                 "hashed-password"
         );
-        verifyNoInteractions(jwtService);
+        verifyNoInteractions(refreshTokenService);
     }
 }

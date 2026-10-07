@@ -35,6 +35,7 @@ $requiredProductionSettings = @(
     '(?m)^\s+OPENAPI_DOCS_ENABLED: "false"$',
     '(?m)^\s+OPENAPI_PUBLIC_ACCESS: "false"$',
     '(?m)^\s+MINIO_ALLOW_INSECURE_HTTP: "false"$',
+    '(?m)^\s+REFRESH_TOKEN_COOKIE_SECURE: "true"$',
     '(?m)^\s+DB_LOCK_TIMEOUT_MS: \$\{DB_LOCK_TIMEOUT_MS:-3000\}$'
 )
 foreach ($pattern in $requiredProductionSettings) {

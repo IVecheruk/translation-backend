@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.Clock;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class JwtService {
@@ -31,6 +32,10 @@ public class JwtService {
     }
 
     public String generateAccessToken(User user) {
+        return generateAccessToken(user, null);
+    }
+
+    public String generateAccessToken(User user, UUID sessionId) {
         Instant issuedAt = clock.instant();
         Instant expiresAt = issuedAt.plus(
                 jwtProperties.accessTokenTtl()
@@ -42,7 +47,7 @@ public class JwtService {
                 .keyId(jwtProperties.keyId())
                 .build();
 
-        JwtClaimsSet claims = JwtClaimsSet.builder()
+        JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
                 .subject(user.getId().toString())
                 .issuer(jwtProperties.issuer())
                 .audience(List.of(jwtProperties.audience()))
@@ -50,11 +55,13 @@ public class JwtService {
                 .claim("email_verified", user.isEmailVerified())
                 .claim("auth_version", user.getAuthVersion())
                 .issuedAt(issuedAt)
-                .expiresAt(expiresAt)
-                .build();
+                .expiresAt(expiresAt);
+        if (sessionId != null) {
+            claims.claim("sid", sessionId.toString());
+        }
 
         JwtEncoderParameters parameters =
-                JwtEncoderParameters.from(header, claims);
+                JwtEncoderParameters.from(header, claims.build());
 
         return jwtEncoder
                 .encode(parameters)

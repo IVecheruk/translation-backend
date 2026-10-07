@@ -1,6 +1,8 @@
 package com.translatelab.backend.config;
 
 import com.translatelab.backend.auth.security.AccountVersionJwtValidator;
+import com.translatelab.backend.auth.security.RefreshSessionJwtValidator;
+import com.translatelab.backend.auth.repository.RefreshSessionRepository;
 import com.translatelab.backend.user.repository.UserRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -22,6 +24,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
+import java.time.Clock;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(JwtProperties.class)
@@ -66,7 +69,9 @@ public class JwtConfig {
     public JwtDecoder jwtDecoder(
             SecretKey jwtSecretKey,
             JwtProperties properties,
-            UserRepository userRepository
+            UserRepository userRepository,
+            RefreshSessionRepository sessionRepository,
+            Clock clock
     ) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder
                 .withSecretKey(jwtSecretKey)
@@ -92,7 +97,8 @@ public class JwtConfig {
                 new AccountVersionJwtValidator(
                         userRepository,
                         properties.keyId()
-                )
+                ),
+                new RefreshSessionJwtValidator(sessionRepository, clock)
         ));
         return decoder;
     }

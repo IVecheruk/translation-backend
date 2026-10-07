@@ -1,6 +1,7 @@
 package com.translatelab.backend.config;
 
 import com.translatelab.backend.common.security.RestSecurityErrorHandler;
+import com.translatelab.backend.auth.security.RefreshRequestGuardFilter;
 import com.translatelab.backend.common.web.ApiRateLimitFilter;
 import com.translatelab.backend.common.web.RateLimitResponseWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -16,6 +17,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.core.convert.converter.Converter;
@@ -34,7 +36,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableConfigurationProperties({
         ApiRateLimitProperties.class,
         AccountSecurityProperties.class,
-        WebSecurityProperties.class
+        WebSecurityProperties.class,
+        RefreshTokenProperties.class
 })
 public class SecurityConfig {
 
@@ -66,6 +69,8 @@ public class SecurityConfig {
                                 HttpMethod.POST,
                                 "/api/auth/register",
                                 "/api/auth/login",
+                                "/api/auth/refresh",
+                                "/api/auth/logout",
                                 "/api/auth/email-verification/request",
                                 "/api/auth/email-verification/confirm",
                                 "/api/auth/password-reset/request",
@@ -121,12 +126,22 @@ public class SecurityConfig {
                         .accessDeniedHandler(securityErrorHandler)
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
+                        .bearerTokenResolver(request -> {
+                            // Cookie actions must work even if an interceptor sends
+                            // an expired access token along with the request.
+                            if (RefreshRequestGuardFilter.isCookieAction(request)) {
+                                return null;
+                            }
+                            return new DefaultBearerTokenResolver().resolve(request);
+                        })
                         .authenticationEntryPoint(securityErrorHandler)
                         .accessDeniedHandler(securityErrorHandler)
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(
                                 jwtAuthenticationConverter
                         ))
                 )
+                .addFilterBefore(new RefreshRequestGuardFilter(securityErrorHandler),
+                        BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(
                         apiRateLimitFilter,
                         BearerTokenAuthenticationFilter.class
@@ -193,7 +208,7 @@ public class SecurityConfig {
                     List.of("GET", "POST", "PUT", "DELETE", "OPTIONS")
             );
             configuration.setAllowedHeaders(
-                    List.of("Authorization", "Content-Type", "X-Correlation-ID")
+                    List.of("Authorization", "Content-Type", "X-Correlation-ID", "X-Refresh-Request")
             );
             configuration.setExposedHeaders(
                     List.of("X-Correlation-ID", "Retry-After")

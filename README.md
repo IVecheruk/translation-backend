@@ -288,10 +288,21 @@ Authorization: Bearer <access-token>
 Java backend не принимает и не хранит.
 
 JWT проверяется по подписи, issuer, audience, идентификатору активного ключа и
-актуальной версии безопасности аккаунта. Refresh token в текущей архитектуре
-не используется: после истечения access token требуется повторный вход.
+актуальной версии безопасности аккаунта. Access token по умолчанию действует
+15 минут. Refresh-сессия действует 7 дней с момента входа; её срок не
+продлевается при обновлении. Refresh token передаётся только в `HttpOnly`
+cookie и хранится в PostgreSQL в виде хеша. Каждый refresh заменяет токен;
+повторное использование старого токена отзывает эту сессию вместе с её
+access token. Выход через `logout` отзывает только текущую сессию.
 Сброс пароля и `logout-all` увеличивают версию безопасности и немедленно
-отзывают все ранее выданные токены пользователя.
+отзывают все ранее выданные access token и refresh-сессии пользователя.
+
+На входе frontend должен использовать `Content-Type: application/json` и
+`credentials: "include"`. Для refresh и logout дополнительно обязателен
+заголовок `X-Refresh-Request: true`. Cookie имеет `Path=/api/auth`, без Domain,
+с `SameSite=Lax` по умолчанию. В production cookie всегда `Secure`; локальный
+Compose по умолчанию допускает HTTP. Полный контракт, обработка параллельных
+запросов и команды проверки: [AUTH_SESSION_CONTRACT.md](AUTH_SESSION_CONTRACT.md).
 
 После регистрации пользователь подтверждает владение email по одноразовому
 токену с ограниченным сроком действия. До подтверждения недоступны загрузка
@@ -310,6 +321,8 @@ http://localhost:8080
 | --- | --- | --- | --- |
 | `POST` | `/api/auth/register` | публичный | регистрация |
 | `POST` | `/api/auth/login` | публичный | получение JWT |
+| `POST` | `/api/auth/refresh` | refresh cookie + `X-Refresh-Request: true` | обновление JWT и refresh cookie |
+| `POST` | `/api/auth/logout` | refresh cookie + `X-Refresh-Request: true` | выход из текущей сессии |
 | `POST` | `/api/auth/logout-all` | JWT | отзыв всех access token аккаунта |
 | `POST` | `/api/auth/email-verification/request` | публичный | запрос письма подтверждения |
 | `POST` | `/api/auth/email-verification/confirm` | публичный | подтверждение email |

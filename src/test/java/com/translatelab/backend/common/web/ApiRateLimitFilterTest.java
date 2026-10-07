@@ -86,6 +86,16 @@ class ApiRateLimitFilterTest {
         );
     }
 
+    @Test
+    void shouldLimitRefreshAndLogoutIndependentlyFromLogin() throws Exception {
+        for (String path : new String[]{"/api/auth/login", "/api/auth/refresh", "/api/auth/logout"}) {
+            assertEquals(200, execute(path, "192.0.2.40", null).getStatus());
+            MockHttpServletResponse rejected = execute(path, "192.0.2.40", null);
+            assertEquals(429, rejected.getStatus());
+            assertEquals("60", rejected.getHeader("Retry-After"));
+        }
+    }
+
     private MockHttpServletResponse execute(
             String path,
             String remoteAddress,

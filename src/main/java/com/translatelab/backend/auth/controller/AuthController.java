@@ -8,12 +8,17 @@ import com.translatelab.backend.auth.service.LoginService;
 import com.translatelab.backend.auth.service.RegistrationService;
 import com.translatelab.backend.auth.service.AccountRecoveryService;
 import com.translatelab.backend.auth.service.SessionRevocationService;
+import com.translatelab.backend.auth.service.RefreshTokenService;
+import com.translatelab.backend.auth.service.RefreshCookieService;
+import com.translatelab.backend.auth.dto.SessionTokens;
+import com.translatelab.backend.auth.exception.InvalidRefreshTokenException;
 import com.translatelab.backend.auth.dto.AccountEmailRequest;
 import com.translatelab.backend.auth.dto.AccountTokenRequest;
 import com.translatelab.backend.auth.dto.PasswordResetConfirmRequest;
 import com.translatelab.backend.auth.security.LoginAttemptLimiter;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -32,19 +37,25 @@ public class AuthController {
     private final AccountRecoveryService recoveryService;
     private final SessionRevocationService sessionRevocationService;
     private final LoginAttemptLimiter loginAttemptLimiter;
+    private final RefreshTokenService refreshTokenService;
+    private final RefreshCookieService refreshCookieService;
 
     public AuthController(
             RegistrationService registrationService,
             LoginService loginService,
             AccountRecoveryService recoveryService,
             SessionRevocationService sessionRevocationService,
-            LoginAttemptLimiter loginAttemptLimiter
+            LoginAttemptLimiter loginAttemptLimiter,
+            RefreshTokenService refreshTokenService,
+            RefreshCookieService refreshCookieService
     ) {
         this.registrationService = registrationService;
         this.loginService = loginService;
         this.recoveryService = recoveryService;
         this.sessionRevocationService = sessionRevocationService;
         this.loginAttemptLimiter = loginAttemptLimiter;
+        this.refreshTokenService = refreshTokenService;
+        this.refreshCookieService = refreshCookieService;
     }
 
     @PostMapping("/register")
@@ -55,17 +66,39 @@ public class AuthController {
         return registrationService.register(request);
     }
 
-    @PostMapping("/login")
+    @PostMapping(value = "/login", consumes = "application/json")
     @ResponseStatus(HttpStatus.OK)
     public LoginResponse login (
             @Valid @RequestBody LoginRequest request,
-            HttpServletRequest httpRequest
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
         loginAttemptLimiter.check(
                 request.email(),
                 httpRequest.getRemoteAddr()
         );
-        return loginService.login(request);
+        SessionTokens tokens = loginService.login(request);
+        refreshCookieService.write(httpResponse, tokens);
+        return tokens.response();
+    }
+
+    @PostMapping("/refresh")
+    public LoginResponse refresh(HttpServletRequest request, HttpServletResponse response) {
+        try {
+            SessionTokens tokens = refreshTokenService.rotate(refreshCookieService.read(request));
+            refreshCookieService.write(response, tokens);
+            return tokens.response();
+        } catch (InvalidRefreshTokenException exception) {
+            refreshCookieService.clear(response);
+            throw exception;
+        }
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+        refreshTokenService.logout(refreshCookieService.read(request));
+        refreshCookieService.clear(response);
     }
 
     @PostMapping("/email-verification/request")
@@ -103,9 +136,10 @@ public class AuthController {
     @PostMapping("/logout-all")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
-    public void logoutAll(@AuthenticationPrincipal Jwt jwt) {
+    public void logoutAll(@AuthenticationPrincipal Jwt jwt, HttpServletResponse response) {
         sessionRevocationService.revokeAll(
                 UUID.fromString(jwt.getSubject())
         );
+        refreshCookieService.clear(response);
     }
 }

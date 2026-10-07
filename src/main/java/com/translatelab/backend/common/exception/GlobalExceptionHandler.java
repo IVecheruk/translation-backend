@@ -2,6 +2,7 @@ package com.translatelab.backend.common.exception;
 
 import com.translatelab.backend.auth.exception.EmailAlreadyExistsException;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
+import com.translatelab.backend.auth.exception.InvalidRefreshTokenException;
 import com.translatelab.backend.auth.exception.InvalidAccountActionTokenException;
 import com.translatelab.backend.common.web.CorrelationIdContext;
 import com.translatelab.backend.messaging.exception.MessagePublishingException;
@@ -58,6 +59,14 @@ public class GlobalExceptionHandler {
 
     public GlobalExceptionHandler(Optional<MeterRegistry> meterRegistry) {
         this.meterRegistry = meterRegistry;
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ApiError> handleInvalidRefreshToken(
+            InvalidRefreshTokenException exception, HttpServletRequest request
+    ) {
+        return buildResponse(HttpStatus.UNAUTHORIZED, exception.getMessage(),
+                request.getRequestURI(), Map.of());
     }
 
     @ExceptionHandler(EmailAlreadyExistsException.class)

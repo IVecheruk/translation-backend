@@ -96,23 +96,17 @@ public class ApiRateLimitFilter extends OncePerRequestFilter {
     }
 
     private Map<String, Policy> policies() {
-        return Map.of(
-                "/api/auth/register",
-                new Policy("registration", properties.registrationPerMinute()),
-                "/api/auth/login",
-                new Policy("login", properties.loginPerMinute()),
-                "/api/documents/upload",
-                new Policy("document-upload", properties.documentUploadPerMinute()),
-                "/api/subscription-purchases",
-                new Policy("checkout", properties.checkoutPerMinute()),
-                "/api/auth/email-verification/request",
-                new Policy("email-verification-request", properties.accountEmailRequestPerMinute()),
-                "/api/auth/email-verification/confirm",
-                new Policy("email-verification-confirm", properties.accountTokenConfirmationPerMinute()),
-                "/api/auth/password-reset/request",
-                new Policy("password-reset-request", properties.accountEmailRequestPerMinute()),
-                "/api/auth/password-reset/confirm",
-                new Policy("password-reset-confirm", properties.accountTokenConfirmationPerMinute())
+        return Map.ofEntries(
+                Map.entry("/api/auth/refresh", new Policy("refresh", properties.loginPerMinute())),
+                Map.entry("/api/auth/logout", new Policy("logout", properties.loginPerMinute())),
+                Map.entry("/api/auth/register", new Policy("registration", properties.registrationPerMinute())),
+                Map.entry("/api/auth/login", new Policy("login", properties.loginPerMinute())),
+                Map.entry("/api/documents/upload", new Policy("document-upload", properties.documentUploadPerMinute())),
+                Map.entry("/api/subscription-purchases", new Policy("checkout", properties.checkoutPerMinute())),
+                Map.entry("/api/auth/email-verification/request", new Policy("email-verification-request", properties.accountEmailRequestPerMinute())),
+                Map.entry("/api/auth/email-verification/confirm", new Policy("email-verification-confirm", properties.accountTokenConfirmationPerMinute())),
+                Map.entry("/api/auth/password-reset/request", new Policy("password-reset-request", properties.accountEmailRequestPerMinute())),
+                Map.entry("/api/auth/password-reset/confirm", new Policy("password-reset-confirm", properties.accountTokenConfirmationPerMinute()))
         );
     }
 

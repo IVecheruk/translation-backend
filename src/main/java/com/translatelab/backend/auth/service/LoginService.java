@@ -1,7 +1,7 @@
 package com.translatelab.backend.auth.service;
 
 import com.translatelab.backend.auth.dto.LoginRequest;
-import com.translatelab.backend.auth.dto.LoginResponse;
+import com.translatelab.backend.auth.dto.SessionTokens;
 import com.translatelab.backend.auth.exception.InvalidCredentialsException;
 import com.translatelab.backend.user.entity.User;
 import com.translatelab.backend.user.repository.UserRepository;
@@ -12,33 +12,32 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Locale;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class LoginService {
 
-    private static final String TOKEN_TYPE = "Bearer";
     private static final String DUMMY_PASSWORD_HASH =
             "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20zMPSb8ukP1vN2bBJgaFyATqyo54fO";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
     public LoginService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService
+            RefreshTokenService refreshTokenService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
+        this.refreshTokenService = refreshTokenService;
     }
 
-    public LoginResponse login(LoginRequest request) {
+    public SessionTokens login(LoginRequest request) {
         String email = request.email()
                 .strip()
                 .toLowerCase(Locale.ROOT);
 
-        User user = userRepository.findByEmail(email).orElse(null);
+        User user = userRepository.findByEmailForUpdate(email).orElse(null);
 
         boolean passwordMatches = passwordEncoder.matches(
                 request.password(),
@@ -48,12 +47,6 @@ public class LoginService {
             throw new InvalidCredentialsException();
         }
 
-        String accessToken = jwtService.generateAccessToken(user);
-
-        return new LoginResponse(
-                accessToken,
-                TOKEN_TYPE,
-                jwtService.getAccessTokenTtlSeconds()
-        );
+        return refreshTokenService.open(user);
     }
 }
